@@ -282,7 +282,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                     )}
 
                     {/* Exit Door */}
-                    {isExitCell && hasKey && !isPlayerCell && (
+                    {isExitCell && !isPlayerCell && (
                       <div className="w-full h-full flex items-center justify-center p-2">
                         <div className="w-full h-full border-4 border-slate-900 bg-white rounded-lg flex items-center justify-center relative">
                           <div className="absolute right-2 top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 rounded-full"></div>
