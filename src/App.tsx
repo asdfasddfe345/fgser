@@ -55,6 +55,7 @@ import { GamingAptitudePage } from './components/pages/GamingAptitudePage';
 import { CompanyGamePage } from './components/pages/CompanyGamePage';
 import { AccenturePathFinderPage } from './components/pages/AccenturePathFinderPage';
 import { CognitivePathFinderPage } from './components/pages/CognitivePathFinderPage';
+import { KeyFinderPage } from './components/pages/KeyFinderPage';
 
 
 function App() {
@@ -481,6 +482,7 @@ const handleDiwaliCTAClick = useCallback(() => {
           <Route path="/gaming/:companyId" element={<CompanyGamePage onShowAuth={handleShowAuth} />} />
           <Route path="/pathfinder" element={<AccenturePathFinderPage />} />
           <Route path="/cognitive-pathfinder" element={<CognitivePathFinderPage />} />
+          <Route path="/key-finder" element={<KeyFinderPage />} />
           <Route
             path="/admin/jobs"
             element={
