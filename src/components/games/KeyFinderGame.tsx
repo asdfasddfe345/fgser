@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Brain, Key, Clock, Target, Trophy, TrendingUp, BarChart3, AlertCircle } from 'lucide-react';
-import { KeyFinderGame } from '../games/KeyFinderGame';
+
 import { keyFinderService } from '../../services/keyFinderService';
 import { KeyFinderLeaderboardEntry } from '../../types/keyFinder';
 import { useAuth } from '../../contexts/AuthContext';
