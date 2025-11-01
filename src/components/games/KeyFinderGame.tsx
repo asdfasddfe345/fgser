@@ -282,7 +282,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                     )}
 
                     {/* Exit Door */}
-                    {isExitCell && !isPlayerCell && (
+                    {isExitCell && hasKey && !isPlayerCell && (
                       <div className="w-full h-full flex items-center justify-center p-2">
                         <div className="w-full h-full border-4 border-slate-900 bg-white rounded-lg flex items-center justify-center relative">
                           <div className="absolute right-2 top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 rounded-full"></div>
@@ -294,71 +294,50 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
               })}
             </div>
 
-            {/* Arrow overlays on adjacent cells */}
-{canMove(0, -1) && (
-  <button
-    onClick={() => handleMove(0, -1)}
-    disabled={gameOver}
-    className="absolute flex items-center justify-center bg-white/40 hover:bg-white/60 transition-all disabled:opacity-0 disabled:pointer-events-none z-30 border-2 border-slate-400"
-    style={{
-      left: playerPos.x * cellSize,
-      top: (playerPos.y - 1) * cellSize,
-      width: cellSize,
-      height: cellSize,
-    }}
-  >
-    <ChevronUp className="w-10 h-10 text-slate-900" strokeWidth={3} />
-  </button>
-)}
+            {/* Directional Arrow Buttons */}
+            {canMove(0, -1) && (
+              <button
+                onClick={() => handleMove(0, -1)}
+                disabled={gameOver}
+                className="absolute left-1/2 -translate-x-1/2 bg-slate-700 hover:bg-slate-600 rounded-full p-4 transition-all disabled:opacity-30 disabled:cursor-not-allowed z-30 shadow-xl border-2 border-slate-600"
+                style={{ top: -70 }}
+              >
+                <ChevronUp className="w-8 h-8 text-slate-200" strokeWidth={3} />
+              </button>
+            )}
 
-{canMove(0, 1) && (
-  <button
-    onClick={() => handleMove(0, 1)}
-    disabled={gameOver}
-    className="absolute flex items-center justify-center bg-white/40 hover:bg-white/60 transition-all disabled:opacity-0 disabled:pointer-events-none z-30 border-2 border-slate-400"
-    style={{
-      left: playerPos.x * cellSize,
-      top: (playerPos.y + 1) * cellSize,
-      width: cellSize,
-      height: cellSize,
-    }}
-  >
-    <ChevronDown className="w-10 h-10 text-slate-900" strokeWidth={3} />
-  </button>
-)}
+            {canMove(0, 1) && (
+              <button
+                onClick={() => handleMove(0, 1)}
+                disabled={gameOver}
+                className="absolute left-1/2 -translate-x-1/2 bg-slate-700 hover:bg-slate-600 rounded-full p-4 transition-all disabled:opacity-30 disabled:cursor-not-allowed z-30 shadow-xl border-2 border-slate-600"
+                style={{ bottom: -70 }}
+              >
+                <ChevronDown className="w-8 h-8 text-slate-200" strokeWidth={3} />
+              </button>
+            )}
 
-{canMove(-1, 0) && (
-  <button
-    onClick={() => handleMove(-1, 0)}
-    disabled={gameOver}
-    className="absolute flex items-center justify-center bg-white/40 hover:bg-white/60 transition-all disabled:opacity-0 disabled:pointer-events-none z-30 border-2 border-slate-400"
-    style={{
-      left: (playerPos.x - 1) * cellSize,
-      top: playerPos.y * cellSize,
-      width: cellSize,
-      height: cellSize,
-    }}
-  >
-    <ChevronLeft className="w-10 h-10 text-slate-900" strokeWidth={3} />
-  </button>
-)}
+            {canMove(-1, 0) && (
+              <button
+                onClick={() => handleMove(-1, 0)}
+                disabled={gameOver}
+                className="absolute top-1/2 -translate-y-1/2 bg-slate-700 hover:bg-slate-600 rounded-full p-4 transition-all disabled:opacity-30 disabled:cursor-not-allowed z-30 shadow-xl border-2 border-slate-600"
+                style={{ left: -70 }}
+              >
+                <ChevronLeft className="w-8 h-8 text-slate-200" strokeWidth={3} />
+              </button>
+            )}
 
-{canMove(1, 0) && (
-  <button
-    onClick={() => handleMove(1, 0)}
-    disabled={gameOver}
-    className="absolute flex items-center justify-center bg-white/40 hover:bg-white/60 transition-all disabled:opacity-0 disabled:pointer-events-none z-30 border-2 border-slate-400"
-    style={{
-      left: (playerPos.x + 1) * cellSize,
-      top: playerPos.y * cellSize,
-      width: cellSize,
-      height: cellSize,
-    }}
-  >
-    <ChevronRight className="w-10 h-10 text-slate-900" strokeWidth={3} />
-  </button>
-)}
-
+            {canMove(1, 0) && (
+              <button
+                onClick={() => handleMove(1, 0)}
+                disabled={gameOver}
+                className="absolute top-1/2 -translate-y-1/2 bg-slate-700 hover:bg-slate-600 rounded-full p-4 transition-all disabled:opacity-30 disabled:cursor-not-allowed z-30 shadow-xl border-2 border-slate-600"
+                style={{ right: -70 }}
+              >
+                <ChevronRight className="w-8 h-8 text-slate-200" strokeWidth={3} />
+              </button>
+            )}
           </div>
 
           {/* Timer and Instructions */}
