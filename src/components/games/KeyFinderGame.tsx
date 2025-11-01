@@ -41,11 +41,17 @@ export const KeyFinderPage: React.FC = () => {
     }
   };
 
-  const handleStartGame = () => {
-    console.log('Start Game clicked', { user, isAuthenticated, isLoading });
+  const handleStartGame = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    console.log('=== START GAME BUTTON CLICKED ===');
+    console.log('User:', user);
+    console.log('Is Authenticated:', isAuthenticated);
+    console.log('Is Loading:', isLoading);
     
     if (isLoading) {
-      console.log('Still loading authentication...');
+      console.log('Still loading authentication, please wait...');
       return;
     }
     
@@ -56,7 +62,7 @@ export const KeyFinderPage: React.FC = () => {
       return;
     }
     
-    console.log('Starting game for user:', user.id);
+    console.log('✅ Starting game for user:', user.id);
     setGameMode('playing');
   };
 
@@ -114,11 +120,11 @@ export const KeyFinderPage: React.FC = () => {
             exit={{ opacity: 0, y: -20 }}
             className="mb-6 mx-auto max-w-md"
           >
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+            <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800 rounded-lg p-4">
               <div className="flex items-center space-x-3">
-                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" />
-                <p className="text-red-800 dark:text-red-200 font-medium">
-                  Please sign in to play the game
+                <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400 flex-shrink-0" />
+                <p className="text-red-800 dark:text-red-200 font-semibold text-base">
+                  Please sign in to play the game!
                 </p>
               </div>
             </div>
@@ -299,19 +305,19 @@ export const KeyFinderPage: React.FC = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="text-center mb-8"
+          className="text-center mb-8 relative z-10"
         >
           <button
+            type="button"
             onClick={handleStartGame}
             disabled={isLoading}
-            className={`px-12 py-4 text-lg font-bold rounded-xl shadow-lg transition-all transform ${
-              isLoading
-                ? 'bg-gray-400 cursor-not-allowed'
-                : !user || !isAuthenticated
-                ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white hover:shadow-xl hover:scale-105 cursor-pointer'
-                : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white hover:shadow-xl hover:scale-105 cursor-pointer'
-            }`}
-            style={{ pointerEvents: isLoading ? 'none' : 'auto' }}
+            className={`
+              relative px-12 py-4 text-lg font-bold rounded-xl shadow-lg transition-all transform
+              ${isLoading
+                ? 'bg-gray-400 cursor-not-allowed text-white'
+                : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white hover:shadow-xl hover:scale-105 cursor-pointer active:scale-95'
+              }
+            `}
           >
             {isLoading ? 'Loading...' : 'Start Game'}
           </button>
