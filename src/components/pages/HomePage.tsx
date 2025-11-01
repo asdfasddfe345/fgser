@@ -22,7 +22,8 @@ import {
   ChevronDown,
   ChevronUp,
   Briefcase,
-  Globe
+  Globe,
+  Gamepad2
 } from 'lucide-react';
 // Assuming these imports exist in the user's project
 // import { paymentService } from '../../services/paymentService';
@@ -113,7 +114,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   // Helper function to check if a feature is available based on subscription
  const isFeatureAvailable = (featureId: string) => {
   // Free features - always available for authenticated users
-  if (featureId === 'linkedin-generator' || featureId === 'mock-interview' || featureId === 'portfolio-builder') {
+  if (featureId === 'linkedin-generator' || featureId === 'mock-interview' || featureId === 'portfolio-builder' || featureId === '/gaming') {
     return true;
   }
 
@@ -144,7 +145,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   }
 
   // Free features - skip subscription check
-  const freeFeatures = ['linkedin-generator', 'mock-interview', 'portfolio-builder'];
+  const freeFeatures = ['linkedin-generator', 'mock-interview', 'portfolio-builder', '/gaming'];
   const isFreeFeature = freeFeatures.includes(feature.id);
 
   if (isAuthenticated && feature.requiresAuth && !isFreeFeature && !isFeatureAvailable(feature.id)) {
@@ -205,6 +206,15 @@ export const HomePage: React.FC<HomePageProps> = ({
       requiresAuth: true,
       highlight: true,
       gradient: 'from-indigo-50 to-purple-50',
+    },
+    {
+      id: '/gaming',
+      title: 'Gaming Aptitude',
+      description: 'Test your problem-solving skills with Path Finder games for top consulting companies.',
+      icon: <Gamepad2 className="w-6 h-6" />,
+      requiresAuth: true,
+      highlight: false,
+      gradient: 'from-pink-50 to-rose-50',
     }
 
   ];
@@ -329,6 +339,9 @@ export const HomePage: React.FC<HomePageProps> = ({
           remainingCount = null; // Free - no payment required
           break;
         case 'portfolio-builder':
+          remainingCount = null; // Free - no payment required
+          break;
+        case '/gaming':
           remainingCount = null; // Free - no payment required
           break;
         default:

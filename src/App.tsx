@@ -51,6 +51,8 @@ import { WebinarLandingPage } from './components/pages/WebinarLandingPage';
 import { WebinarDetailsPage } from './components/pages/WebinarDetailsPage';
 
 import { MyWebinarsPage } from './components/pages/MyWebinarsPage';
+import { GamingAptitudePage } from './components/pages/GamingAptitudePage';
+import { CompanyGamePage } from './components/pages/CompanyGamePage';
 
 
 function App() {
@@ -473,6 +475,8 @@ const handleDiwaliCTAClick = useCallback(() => {
           <Route path="/webinar-details/:registrationId" element={<WebinarDetailsPage />} />
 
           <Route path="/my-webinars" element={<MyWebinarsPage />} />
+          <Route path="/gaming" element={<GamingAptitudePage isAuthenticated={isAuthenticated} onShowAuth={handleShowAuth} />} />
+          <Route path="/gaming/:companyId" element={<CompanyGamePage onShowAuth={handleShowAuth} />} />
           <Route
             path="/admin/jobs"
             element={
