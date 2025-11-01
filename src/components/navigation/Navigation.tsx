@@ -16,7 +16,9 @@ import {
   Shield,
   LayoutDashboard,
   Sparkles,
+  Gamepad2, // ADD THIS LINE
 } from "lucide-react";
+
 import { useAuth } from "../../contexts/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
 
