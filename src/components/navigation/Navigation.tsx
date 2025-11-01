@@ -63,13 +63,15 @@ export const Navigation: React.FC<NavigationProps> = ({ onPageChange }) => {
     };
   }, []);
 
-  const navigationItems = [
-    { id: "/", label: "Home", icon: <Home className="w-4 h-4" /> },
-    { id: "/blog", label: "Blog", icon: <BookOpen className="w-4 h-4" /> },
-    { id: "/webinars", label: "Webinars", icon: <Sparkles className="w-4 h-4" /> },
-    { id: "/jobs", label: "Explore Jobs", icon: <Briefcase className="w-4 h-4" /> },
-    { id: "/tutorials", label: "Tutorials", icon: <BookOpen className="w-4 h-4" /> },
-  ];
+const navigationItems = [
+  { id: "/", label: "Home", icon: <Home className="w-4 h-4" /> },
+  { id: "/blog", label: "Blog", icon: <BookOpen className="w-4 h-4" /> },
+  { id: "/webinars", label: "Webinars", icon: <Sparkles className="w-4 h-4" /> },
+  { id: "/gaming", label: "Gaming", icon: <Gamepad2 className="w-4 h-4" /> }, // ADD THIS LINE
+  { id: "/jobs", label: "Explore Jobs", icon: <Briefcase className="w-4 h-4" /> },
+  { id: "/tutorials", label: "Tutorials", icon: <BookOpen className="w-4 h-4" /> },
+];
+
 
   const dashboardItems = [
     { id: "/about", label: "About Us", icon: <Info className="w-4 h-4" /> },
