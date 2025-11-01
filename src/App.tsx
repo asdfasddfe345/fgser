@@ -1,6 +1,6 @@
 // src/App.tsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { Menu, X, Home, Info, BookOpen, Phone, FileText, LogIn, LogOut, User, Wallet, Briefcase, Crown, Sparkles } from 'lucide-react';
+import { Menu, X, Home, Info, BookOpen, Phone, FileText, LogIn, LogOut, User, Wallet, Briefcase, Crown, Sparkles, Gamepad2 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { Header } from './components/Header';
 import { Navigation } from './components/navigation/Navigation';
@@ -54,6 +54,7 @@ import { MyWebinarsPage } from './components/pages/MyWebinarsPage';
 import { GamingAptitudePage } from './components/pages/GamingAptitudePage';
 import { CompanyGamePage } from './components/pages/CompanyGamePage';
 import { AccenturePathFinderPage } from './components/pages/AccenturePathFinderPage';
+import { CognitivePathFinderPage } from './components/pages/CognitivePathFinderPage';
 
 
 function App() {
@@ -479,6 +480,7 @@ const handleDiwaliCTAClick = useCallback(() => {
           <Route path="/gaming" element={<GamingAptitudePage isAuthenticated={isAuthenticated} onShowAuth={handleShowAuth} />} />
           <Route path="/gaming/:companyId" element={<CompanyGamePage onShowAuth={handleShowAuth} />} />
           <Route path="/pathfinder" element={<AccenturePathFinderPage />} />
+          <Route path="/cognitive-pathfinder" element={<CognitivePathFinderPage />} />
           <Route
             path="/admin/jobs"
             element={
