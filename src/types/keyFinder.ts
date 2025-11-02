@@ -20,9 +20,9 @@ const DEFAULT_CONFIGS: Record<Level, DifficultyConfig> = {
   hard:   { gridSize: 12, wallDensity: 0.33, timeLimitSeconds: 300, optimalMovesMultiplier: 1.7 },
 };
 
-const CONFIG_TABLE = 'key_finder_config';     // optional (per-level overrides)
-const RESULTS_TABLE = 'key_finder_results';   // lightweight summary table
-const CONFIG_TTL_MS = 5 * 60 * 1000;          // cache config 5 min
+const CONFIG_TABLE  = 'key_finder_config';   // optional overrides per level
+const RESULTS_TABLE = 'key_finder_results';  // compact per-run summary table
+const CONFIG_TTL_MS = 5 * 60 * 1000;         // cache configs for 5 min
 
 class KeyFinderService {
   private configs: Record<Level, DifficultyConfig> = { ...DEFAULT_CONFIGS };
@@ -32,7 +32,7 @@ class KeyFinderService {
   // Public API
   // ───────────────────────────────────────────────────────────────────────────
   generateMaze(difficulty: Level): MazeGrid {
-    // fire-and-forget refresh (cached)
+    // refresh config in background
     this.maybeRefreshConfig(difficulty).catch(() => {});
     const { gridSize, wallDensity } = this.configs[difficulty];
 
@@ -82,11 +82,16 @@ class KeyFinderService {
     restartCount: number
   ): ScoreResult {
     const baseScore = 1000;
-    const timeUsed = timeLimitSeconds - completionTimeSeconds; // seconds remaining
+
+    // timeRemaining = completionTimeSeconds; so "time used" = limit - remaining
+    const timeUsed = timeLimitSeconds - completionTimeSeconds;
     const timeBonus = timeUsed < 60 ? 200 : timeUsed < 120 ? 150 : timeUsed < 180 ? 100 : 50;
+
     const extraMoves = Math.max(0, totalMoves - optimalMoves);
     const movePenalty = extraMoves * 5;
+
     const restartPenalty = restartCount * 20;
+
     const finalScore = Math.max(baseScore + timeBonus - movePenalty - restartPenalty, 50);
     const efficiency = optimalMoves > 0 ? (optimalMoves / totalMoves) * 100 : 0;
 
@@ -111,8 +116,9 @@ class KeyFinderService {
     mazeConfig: MazeGrid
   ): Promise<KeyFinderSession> {
     const cfg = await this.getConfig(difficulty);
-    // create a lightweight token for client correlation
-    const token = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
+    const token =
+      (globalThis.crypto as any)?.randomUUID?.() ??
+      `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     const { data, error } = await supabase
       .from('key_finder_sessions')
@@ -189,8 +195,8 @@ class KeyFinderService {
     if (error) throw error;
   }
 
-  // Missing earlier — now implemented. Stores a compact row per run.
-  async saveGameResult(params: {
+  // ✅ NEW: compact per-run result row (what your component calls)
+  async saveGameResult(result: {
     user_id: string;
     difficulty: Level;
     score: number;
@@ -198,22 +204,27 @@ class KeyFinderService {
     moves_count: number;
     completed: boolean;
   }): Promise<void> {
-    const { error } = await supabase
-      .from(RESULTS_TABLE)
-      .insert({
-        user_id: params.user_id,
-        difficulty: params.difficulty,
-        score: params.score,
-        time_taken_seconds: params.time_taken,
-        total_moves: params.moves_count,
-        completed: params.completed,
+    try {
+      const { error } = await supabase.from(RESULTS_TABLE).insert({
+        user_id: result.user_id,
+        difficulty: result.difficulty,
+        score: result.score,
+        time_taken_seconds: result.time_taken,
+        total_moves: result.moves_count,
+        completed: result.completed,
         created_at: new Date().toISOString(),
       });
 
-    if (error) throw error;
+      if (error) {
+        console.error('Error saving game result:', error);
+        throw error;
+      }
+    } catch (err) {
+      console.error('Failed to save game result:', err);
+    }
   }
 
-  // optional — if you’ve created an RPC to roll up leaderboards
+  // Optional: if you have an RPC that rolls up leaderboards
   async updateLeaderboard(
     userId: string,
     difficulty: Level,
@@ -231,7 +242,7 @@ class KeyFinderService {
       p_restart_count: restartCount,
     });
     if (error) {
-      // don’t throw; keep gameplay happy
+      // don’t break gameplay if leaderboard rollup fails
       console.warn('update_key_finder_leaderboard error:', error.message);
     }
   }
@@ -255,7 +266,6 @@ class KeyFinderService {
       console.warn('getLeaderboard error:', error.message);
       return [];
     }
-
     return (data || []).map((row: any, i: number) => ({ ...row, rank: i + 1 }));
   }
 
@@ -263,7 +273,9 @@ class KeyFinderService {
   // Internal: maze creation / pathing
   // ───────────────────────────────────────────────────────────────────────────
   private createMazeAttempt(gridSize: number, wallDensity: number): MazeGrid {
-    const cells: CellType[][] = Array(gridSize).fill(null).map(() => Array(gridSize).fill('empty'));
+    const cells: CellType[][] = Array(gridSize)
+      .fill(null)
+      .map(() => Array(gridSize).fill('empty'));
 
     // sprinkle walls
     const total = gridSize * gridSize;
@@ -274,63 +286,51 @@ class KeyFinderService {
       if (cells[r][c] === 'empty') cells[r][c] = 'wall';
     }
 
-    // start left middle, key/exit anywhere empty
+    // start at left middle; key & exit on empty cells
     const start: Position = { row: Math.floor(gridSize / 2), col: 0 };
     const key = this.findRandomEmpty(cells, gridSize, [start]);
     const exit = this.findRandomEmpty(cells, gridSize, [start, key]);
 
     cells[start.row][start.col] = 'start';
-    cells[key.row][key.col]     = 'key';
-    cells[exit.row][exit.col]   = 'exit';
+    cells[key.row][key.col] = 'key';
+    cells[exit.row][exit.col] = 'exit';
 
-    const p1 = this.bfs(cells, gridSize, start, key);
-    const p2 = this.bfs(cells, gridSize, key, exit);
-    const optimalPathLength = p1.length + p2.length;
+    const toKey = this.bfs(cells, gridSize, start, key);
+    const toExit = this.bfs(cells, gridSize, key, exit);
+    const optimalPathLength = toKey.length + toExit.length;
 
-    return { cells, gridSize, startPosition: start, keyPosition: key, exitPosition: exit, optimalPathLength };
+    return {
+      cells,
+      gridSize,
+      startPosition: start,
+      keyPosition: key,
+      exitPosition: exit,
+      optimalPathLength,
+    };
   }
 
   private createSimpleMaze(gridSize: number): MazeGrid {
-    const cells: CellType[][] = Array(gridSize).fill(null).map(() => Array(gridSize).fill('empty'));
+    const cells: CellType[][] = Array(gridSize)
+      .fill(null)
+      .map(() => Array(gridSize).fill('empty'));
+
     const start: Position = { row: Math.floor(gridSize / 2), col: 0 };
-    const key:   Position = { row: Math.floor(gridSize / 2), col: Math.floor(gridSize / 2) };
-    const exit:  Position = { row: Math.floor(gridSize / 2), col: gridSize - 1 };
+    const key: Position = { row: Math.floor(gridSize / 2), col: Math.floor(gridSize / 2) };
+    const exit: Position = { row: Math.floor(gridSize / 2), col: gridSize - 1 };
 
     cells[start.row][start.col] = 'start';
-    cells[key.row][key.col]     = 'key';
-    cells[exit.row][exit.col]   = 'exit';
+    cells[key.row][key.col] = 'key';
+    cells[exit.row][exit.col] = 'exit';
 
-    return { cells, gridSize, startPosition: start, keyPosition: key, exitPosition: exit, optimalPathLength: gridSize };
+    return {
+      cells,
+      gridSize,
+      startPosition: start,
+      keyPosition: key,
+      exitPosition: exit,
+      optimalPathLength: gridSize,
+    };
   }
-async saveGameResult(result: {
-  user_id: string;
-  difficulty: 'easy' | 'medium' | 'hard';
-  score: number;
-  time_taken: number;
-  moves_count: number;
-  completed: boolean;
-}): Promise<void> {
-  try {
-    const { error } = await supabase
-      .from('key_finder_results')
-      .insert({
-        user_id: result.user_id,
-        difficulty: result.difficulty,
-        score: result.score,
-        time_taken: result.time_taken,
-        moves_count: result.moves_count,
-        completed: result.completed,
-        created_at: new Date().toISOString()
-      });
-
-    if (error) {
-      console.error('Error saving game result:', error);
-      throw error;
-    }
-  } catch (error) {
-    console.error('Failed to save game result:', error);
-  }
-}
 
   private findRandomEmpty(cells: CellType[][], gridSize: number, exclude: Position[]): Position {
     let tries = 0;
@@ -350,7 +350,10 @@ async saveGameResult(result: {
   }
 
   private bfs(cells: CellType[][], gridSize: number, start: Position, end: Position): Position[] {
-    const seen = Array(gridSize).fill(null).map(() => Array(gridSize).fill(false));
+    const seen = Array(gridSize)
+      .fill(null)
+      .map(() => Array(gridSize).fill(false));
+
     const q: { pos: Position; path: Position[] }[] = [{ pos: start, path: [start] }];
     seen[start.row][start.col] = true;
 
