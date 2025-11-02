@@ -302,6 +302,35 @@ class KeyFinderService {
 
     return { cells, gridSize, startPosition: start, keyPosition: key, exitPosition: exit, optimalPathLength: gridSize };
   }
+async saveGameResult(result: {
+  user_id: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  score: number;
+  time_taken: number;
+  moves_count: number;
+  completed: boolean;
+}): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('key_finder_results')
+      .insert({
+        user_id: result.user_id,
+        difficulty: result.difficulty,
+        score: result.score,
+        time_taken: result.time_taken,
+        moves_count: result.moves_count,
+        completed: result.completed,
+        created_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.error('Error saving game result:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Failed to save game result:', error);
+  }
+}
 
   private findRandomEmpty(cells: CellType[][], gridSize: number, exclude: Position[]): Position {
     let tries = 0;
