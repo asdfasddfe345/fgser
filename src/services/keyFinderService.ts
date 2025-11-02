@@ -4,408 +4,160 @@ import {
   Position,
   CellType,
   Direction,
-  KeyFinderSession,
-  MoveRecord,
-  KeyFinderLeaderboardEntry,
-  ScoreResult,
-  DifficultyConfig
+  DifficultyConfig,
 } from '../types/keyFinder';
 
-type Level = 'easy' | 'medium' | 'hard';
-
-//
-// ────────────────────────────────────────────────────────────────────────────────
-// Defaults (Accenture style): 8/10/12; 5:00 each; densities same as your code
-// ────────────────────────────────────────────────────────────────────────────────
-const DEFAULT_CONFIGS: Record<Level, DifficultyConfig> = {
-  easy:   { gridSize: 8,  wallDensity: 0.20, timeLimitSeconds: 300, optimalMovesMultiplier: 1.3 },
-  medium: { gridSize: 10, wallDensity: 0.28, timeLimitSeconds: 300, optimalMovesMultiplier: 1.5 },
-  hard:   { gridSize: 12, wallDensity: 0.33, timeLimitSeconds: 300, optimalMovesMultiplier: 1.7 }
-};
-
-// Supabase table (optional). Shape:
-// level: text('easy'|'medium'|'hard'), grid_size int, time_limit_seconds int,
-// wall_density numeric, optimal_moves_multiplier numeric, is_active boolean
-const CONFIG_TABLE = 'key_finder_config';
-
-// Cache TTL for remote configs
-const CONFIG_TTL_MS = 5 * 60 * 1000;
+type Level = 'easy'|'medium'|'hard';
 
 class KeyFinderService {
-  // Local active configs (used by synchronous methods)
-  private difficultyConfigs: Record<Level, DifficultyConfig> = { ...DEFAULT_CONFIGS };
+  // Local fallbacks (used if DB rows missing)
+  private defaults: Record<Level, DifficultyConfig> = {
+    easy:   { gridSize: 8,  wallDensity: 0.20, timeLimitSeconds: 300, optimalMovesMultiplier: 1.3 },
+    medium: { gridSize: 10, wallDensity: 0.28, timeLimitSeconds: 300, optimalMovesMultiplier: 1.5 },
+    hard:   { gridSize: 12, wallDensity: 0.33, timeLimitSeconds: 300, optimalMovesMultiplier: 1.7 },
+  };
 
-  // Cache bookkeeping for remote fetch
-  private lastFetchedAt: Partial<Record<Level, number>> = {};
+  private cache = new Map<Level, DifficultyConfig>();
+  private lastFetch = new Map<Level, number>();
+  private cacheMs = 60_000;
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // Public: Generate maze synchronously using active configs
-  // ────────────────────────────────────────────────────────────────────────────
-  generateMaze(difficulty: Level): MazeGrid {
-    // Try to refresh config in the background (non-blocking)
-    this.maybeRefreshConfig(difficulty).catch(() => { /* no-op */ });
-
-    const config = this.difficultyConfigs[difficulty];
-    const { gridSize, wallDensity } = config;
-
-    let maze: MazeGrid;
-    let attempts = 0;
-    const maxAttempts = 50;
-
-    do {
-      maze = this.createMazeAttempt(gridSize, wallDensity);
-      attempts++;
-    } while (!this.isValidMaze(maze) && attempts < maxAttempts);
-
-    if (attempts >= maxAttempts) {
-      maze = this.createSimpleMaze(gridSize);
+  async getConfig(difficulty: Level): Promise<DifficultyConfig> {
+    const now = Date.now();
+    const last = this.lastFetch.get(difficulty) ?? 0;
+    if (this.cache.has(difficulty) && now - last < this.cacheMs) {
+      return this.cache.get(difficulty)!;
     }
-    return maze;
+
+    const { data, error } = await supabase
+      .from('key_finder_config')
+      .select('grid_size, wall_density, time_limit_seconds, optimal_moves_multiplier')
+      .eq('difficulty', difficulty)
+      .maybeSingle();
+
+    let cfg: DifficultyConfig;
+    if (!error && data) {
+      cfg = {
+        gridSize: data.grid_size,
+        wallDensity: Number(data.wall_density),
+        timeLimitSeconds: data.time_limit_seconds,
+        optimalMovesMultiplier: Number(data.optimal_moves_multiplier),
+      };
+    } else {
+      cfg = this.defaults[difficulty];
+    }
+    this.cache.set(difficulty, cfg);
+    this.lastFetch.set(difficulty, now);
+    return cfg;
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // Maze internals
-  // ────────────────────────────────────────────────────────────────────────────
-  private createMazeAttempt(gridSize: number, wallDensity: number): MazeGrid {
-    const cells: CellType[][] = Array(gridSize).fill(null).map(() => Array(gridSize).fill('empty'));
+  // Maze generator (start at row=0, col=0 to match your UI)
+  generateMaze(config: DifficultyConfig): MazeGrid {
+    const { gridSize, wallDensity } = config;
+    const cells: CellType[][] = Array.from({ length: gridSize }, () =>
+      Array<CellType>(gridSize).fill('empty')
+    );
 
-    const totalCells = gridSize * gridSize;
-    const wallCount = Math.floor(totalCells * wallDensity);
-
-    for (let i = 0; i < wallCount; i++) {
-      const row = Math.floor(Math.random() * gridSize);
-      const col = Math.floor(Math.random() * gridSize);
-      if (cells[row][col] === 'empty') cells[row][col] = 'wall';
+    const wallCount = Math.floor(gridSize * gridSize * wallDensity);
+    let placed = 0;
+    while (placed < wallCount) {
+      const r = Math.floor(Math.random() * gridSize);
+      const c = Math.floor(Math.random() * gridSize);
+      if ((r === 0 && c === 0) || cells[r][c] !== 'empty') continue;
+      cells[r][c] = 'wall';
+      placed++;
     }
 
-    // Start on left mid like the real test feel (still fine if UI puts avatar elsewhere)
-    const startPosition: Position = { row: Math.floor(gridSize / 2), col: 0 };
-    const keyPosition  = this.findRandomEmptyPosition(cells, gridSize, [startPosition]);
-    const exitPosition = this.findRandomEmptyPosition(cells, gridSize, [startPosition, keyPosition]);
+    const startPosition: Position = { row: 0, col: 0 };
+    const keyPosition    = this.findEmpty(cells, gridSize, [startPosition]);
+    const exitPosition   = this.findEmpty(cells, gridSize, [startPosition, keyPosition]);
 
     cells[startPosition.row][startPosition.col] = 'start';
-    cells[keyPosition.row][keyPosition.col]     = 'key';
-    cells[exitPosition.row][exitPosition.col]   = 'exit';
+    cells[keyPosition.row][keyPosition.col] = 'key';
+    cells[exitPosition.row][exitPosition.col] = 'exit';
 
     const pathToKey  = this.findPath(cells, gridSize, startPosition, keyPosition);
     const pathToExit = this.findPath(cells, gridSize, keyPosition, exitPosition);
-    const optimalPathLength = pathToKey.length + pathToExit.length;
 
-    return { cells, gridSize, startPosition, keyPosition, exitPosition, optimalPathLength };
-  }
-
-  private createSimpleMaze(gridSize: number): MazeGrid {
-    const cells: CellType[][] = Array(gridSize).fill(null).map(() => Array(gridSize).fill('empty'));
-    const startPosition: Position = { row: Math.floor(gridSize / 2), col: 0 };
-    const keyPosition:   Position = { row: Math.floor(gridSize / 2), col: Math.floor(gridSize / 2) };
-    const exitPosition:   Position = { row: Math.floor(gridSize / 2), col: gridSize - 1 };
-
-    cells[startPosition.row][startPosition.col] = 'start';
-    cells[keyPosition.row][keyPosition.col]     = 'key';
-    cells[exitPosition.row][exitPosition.col]   = 'exit';
-
-    return { cells, gridSize, startPosition, keyPosition, exitPosition, optimalPathLength: gridSize };
-  }
-
-  private findRandomEmptyPosition(cells: CellType[][], gridSize: number, exclude: Position[]): Position {
-    let attempts = 0;
-    const maxAttempts = 100;
-
-    while (attempts < maxAttempts) {
-      const row = Math.floor(Math.random() * gridSize);
-      const col = Math.floor(Math.random() * gridSize);
-      const excluded = exclude.some(p => p.row === row && p.col === col);
-      if (cells[row][col] === 'empty' && !excluded) return { row, col };
-      attempts++;
+    // If unsolvable, regenerate once with fewer walls
+    if (pathToKey.length === 0 || pathToExit.length === 0) {
+      return this.generateMaze({ ...config, wallDensity: Math.max(0, wallDensity - 0.1) });
     }
 
-    for (let row = 0; row < gridSize; row++) {
-      for (let col = 0; col < gridSize; col++) {
-        const excluded = exclude.some(p => p.row === row && p.col === col);
-        if (cells[row][col] === 'empty' && !excluded) return { row, col };
-      }
-    }
-    return { row: 0, col: 0 };
+    return {
+      cells,
+      gridSize,
+      startPosition,
+      keyPosition,
+      exitPosition,
+      optimalPathLength: pathToKey.length + pathToExit.length,
+    };
   }
 
-  private findPath(cells: CellType[][], gridSize: number, start: Position, end: Position): Position[] {
-    const visited: boolean[][] = Array(gridSize).fill(null).map(() => Array(gridSize).fill(false));
-    const queue: { pos: Position; path: Position[] }[] = [{ pos: start, path: [start] }];
-    visited[start.row][start.col] = true;
+  private findEmpty(cells: CellType[][], n: number, exclude: Position[]): Position {
+    for (let tries = 0; tries < 200; tries++) {
+      const row = Math.floor(Math.random() * n);
+      const col = Math.floor(Math.random() * n);
+      const isEx = exclude.some(p => p.row === row && p.col === col);
+      if (!isEx && cells[row][col] === 'empty') return { row, col };
+    }
+    // fallback linear scan
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      const isEx = exclude.some(p => p.row === r && p.col === c);
+      if (!isEx && cells[r][c] === 'empty') return { row: r, col: c };
+    }
+    return { row: 0, col: 1 };
+  }
 
-    while (queue.length) {
-      const { pos, path } = queue.shift()!;
-      if (pos.row === end.row && pos.col === end.col) return path;
+  private neighbors(p: Position, n: number): Position[] {
+    const out: Position[] = [];
+    if (p.row > 0) out.push({ row: p.row - 1, col: p.col });
+    if (p.row < n - 1) out.push({ row: p.row + 1, col: p.col });
+    if (p.col > 0) out.push({ row: p.row, col: p.col - 1 });
+    if (p.col < n - 1) out.push({ row: p.row, col: p.col + 1 });
+    return out;
+    }
 
-      const neighbors = this.getNeighbors(pos, gridSize);
-      for (const n of neighbors) {
-        if (!visited[n.row][n.col] && (['empty','key','exit','start'] as CellType[]).includes(cells[n.row][n.col])) {
-          visited[n.row][n.col] = true;
-          queue.push({ pos: n, path: [...path, n] });
-        }
+  private findPath(cells: CellType[][], n: number, s: Position, e: Position): Position[] {
+    const seen = Array.from({ length: n }, () => Array<boolean>(n).fill(false));
+    const q: { p: Position; path: Position[] }[] = [{ p: s, path: [s] }];
+    seen[s.row][s.col] = true;
+
+    while (q.length) {
+      const { p, path } = q.shift()!;
+      if (p.row === e.row && p.col === e.col) return path;
+      for (const nb of this.neighbors(p, n)) {
+        if (seen[nb.row][nb.col]) continue;
+        const t = cells[nb.row][nb.col];
+        if (t === 'wall') continue;
+        seen[nb.row][nb.col] = true;
+        q.push({ p: nb, path: [...path, nb] });
       }
     }
     return [];
   }
 
-  private getNeighbors(pos: Position, gridSize: number): Position[] {
-    const out: Position[] = [];
-    if (pos.row > 0) out.push({ row: pos.row - 1, col: pos.col });
-    if (pos.row < gridSize - 1) out.push({ row: pos.row + 1, col: pos.col });
-    if (pos.col > 0) out.push({ row: pos.row, col: pos.col - 1 });
-    if (pos.col < gridSize - 1) out.push({ row: pos.row, col: pos.col + 1 });
-    return out;
+  // optional helper if you want server-side move validation
+  canMove(current: Position, dir: Direction, maze: MazeGrid) {
+    const n = maze.gridSize;
+    let r = current.row, c = current.col;
+    if (dir === 'up') r--; else if (dir === 'down') r++;
+    else if (dir === 'left') c--; else if (dir === 'right') c++;
+    if (r < 0 || r >= n || c < 0 || c >= n) return { canMove: false, hitWall: true, newPosition: null };
+    if (maze.cells[r][c] === 'wall') return { canMove: false, hitWall: true, newPosition: null };
+    return { canMove: true, hitWall: false, newPosition: { row: r, col: c } };
   }
 
-  private isValidMaze(maze: MazeGrid): boolean {
-    const p1 = this.findPath(maze.cells, maze.gridSize, maze.startPosition, maze.keyPosition);
-    if (p1.length === 0) return false;
-    const p2 = this.findPath(maze.cells, maze.gridSize, maze.keyPosition, maze.exitPosition);
-    return p2.length > 0;
-  }
-
-  // ────────────────────────────────────────────────────────────────────────────
-  // Movement & scoring
-  // ────────────────────────────────────────────────────────────────────────────
-  canMove(
-    currentPos: Position,
-    direction: Direction,
-    maze: MazeGrid
-  ): { canMove: boolean; newPosition: Position | null; hitWall: boolean } {
-    let { row, col } = currentPos;
-    if (direction === 'up') row--;
-    if (direction === 'down') row++;
-    if (direction === 'left') col--;
-    if (direction === 'right') col++;
-
-    if (row < 0 || row >= maze.gridSize || col < 0 || col >= maze.gridSize) {
-      return { canMove: false, newPosition: null, hitWall: true };
-    }
-    if (maze.cells[row][col] === 'wall') {
-      return { canMove: false, newPosition: null, hitWall: true };
-    }
-    return { canMove: true, newPosition: { row, col }, hitWall: false };
-  }
-
-  calculateScore(
-    completionTimeSeconds: number,
-    timeLimitSeconds: number,
-    totalMoves: number,
-    optimalMoves: number,
-    restartCount: number
-  ): ScoreResult {
-    const baseScore = 1000;
-
-    // Larger bonus if you finish earlier
-    const timeUsed = timeLimitSeconds - completionTimeSeconds;
-    const timeBonus =
-      timeUsed < 60 ? 200 :
-      timeUsed < 120 ? 150 :
-      timeUsed < 180 ? 100 : 50;
-
-    const extraMoves   = Math.max(0, totalMoves - optimalMoves);
-    const movePenalty  = extraMoves * 5;
-    const restartPenalty = restartCount * 20;
-
-    const finalScore = Math.max(baseScore + timeBonus - movePenalty - restartPenalty, 50);
-    const efficiency = optimalMoves > 0 ? (optimalMoves / totalMoves) * 100 : 0;
-
-    return { baseScore, timeBonus, movePenalty, restartPenalty, finalScore, efficiency, optimalMoves, actualMoves: totalMoves };
-  }
-
-  // ────────────────────────────────────────────────────────────────────────────
-  // Sessions / moves / leaderboard
-  // ────────────────────────────────────────────────────────────────────────────
-  async createSession(
-    userId: string,
-    difficulty: Level,
-    mazeConfig: MazeGrid
-  ): Promise<KeyFinderSession> {
-    // Ensure we use latest config (pulls from Supabase if available)
-    const cfg = await this.getConfig(difficulty);
-
-    const { data, error } = await supabase
-      .from('key_finder_sessions')
-      .insert({
-        user_id: userId,
-        difficulty,
-        maze_config: mazeConfig,
-        time_remaining_seconds: cfg.timeLimitSeconds,
-        total_moves: 0,
-        restart_count: 0,
-        collision_count: 0,
-        has_key: false,
-        is_completed: false,
-        final_score: 0
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error creating Key Finder session:', error);
-      throw error;
-    }
-    return data;
-  }
-
-  async recordMove(
-    sessionId: string,
-    moveNumber: number,
-    fromPosition: Position,
-    toPosition: Position,
-    direction: Direction,
-    wasCollision: boolean,
-    causedRestart: boolean
-  ): Promise<MoveRecord> {
-    const { data, error } = await supabase
-      .from('key_finder_moves')
-      .insert({
-        session_id: sessionId,
-        move_number: moveNumber,
-        from_position: fromPosition,
-        to_position: toPosition,
-        direction,
-        was_collision: wasCollision,
-        caused_restart: causedRestart
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error recording move:', error);
-      throw error;
-    }
-    return data;
-  }
-
-  async completeSession(
-    sessionId: string,
-    finalScore: number,
-    totalMoves: number,
-    restartCount: number,
-    collisionCount: number,
-    timeRemaining: number
-  ): Promise<void> {
-    const { error } = await supabase
-      .from('key_finder_sessions')
-      .update({
-        is_completed: true,
-        final_score: finalScore,
-        total_moves: totalMoves,
-        restart_count: restartCount,
-        collision_count: collisionCount,
-        time_remaining_seconds: timeRemaining,
-        end_time: new Date().toISOString()
-      })
-      .eq('id', sessionId);
-
-    if (error) {
-      console.error('Error completing session:', error);
-      throw error;
-    }
-  }
-
-  async updateLeaderboard(
-    userId: string,
-    difficulty: Level,
-    completionTime: number,
-    totalMoves: number,
-    score: number,
-    restartCount: number
-  ): Promise<void> {
-    const { error } = await supabase.rpc('update_key_finder_leaderboard', {
-      p_user_id: userId,
-      p_difficulty: difficulty,
-      p_completion_time: completionTime,
-      p_total_moves: totalMoves,
-      p_score: score,
-      p_restart_count: restartCount
-    });
-    if (error) console.error('Error updating leaderboard:', error);
-  }
-
-  async getLeaderboard(
-    difficulty?: Level,
-    period: 'daily' | 'weekly' | 'all_time' = 'all_time',
-    limit: number = 100
-  ): Promise<KeyFinderLeaderboardEntry[]> {
-    let query = supabase
-      .from('key_finder_leaderboard')
-      .select('*')
-      .eq('period', period)
-      .order('highest_score', { ascending: false })
-      .limit(limit);
-
-    if (difficulty) query = query.eq('difficulty', difficulty);
-
-    const { data, error } = await query;
-    if (error) {
-      console.error('Error fetching leaderboard:', error);
-      return [];
-    }
-    return (data || []).map((entry: any, i: number) => ({ ...entry, rank: i + 1 }));
-  }
-
-  // ────────────────────────────────────────────────────────────────────────────
-  // Config accessors
-  // ────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Synchronous getter used by existing code paths.
-   * Returns the currently active (cached) config, falling back to defaults.
-   */
-  getDifficultyConfig(difficulty: Level): DifficultyConfig {
-    return this.difficultyConfigs[difficulty];
-  }
-
-  /**
-   * Promise-based getter that ensures we try fetching from Supabase (with cache).
-   * Use this in places where accuracy matters (e.g., createSession).
-   */
-  async getConfig(difficulty: Level): Promise<DifficultyConfig> {
-    await this.maybeRefreshConfig(difficulty);
-    return this.difficultyConfigs[difficulty];
-  }
-
-  /**
-   * Background refresh from Supabase if:
-   * - we never fetched this level, or
-   * - cache is older than CONFIG_TTL_MS
-   */
-  private async maybeRefreshConfig(level: Level): Promise<void> {
-    const now = Date.now();
-    const last = this.lastFetchedAt[level] ?? 0;
-    if (now - last < CONFIG_TTL_MS) return;
-
-    try {
-      const sel = 'grid_size,time_limit_seconds,wall_density,optimal_moves_multiplier,is_active,updated_at';
-      const { data, error } = await supabase
-        .from(CONFIG_TABLE)
-        .select(sel)
-        .eq('level', level)
-        .eq('is_active', true)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!error && data) {
-        const merged: DifficultyConfig = {
-          gridSize: typeof data.grid_size === 'number' ? data.grid_size : this.difficultyConfigs[level].gridSize,
-          timeLimitSeconds: typeof data.time_limit_seconds === 'number' ? data.time_limit_seconds : this.difficultyConfigs[level].timeLimitSeconds,
-          wallDensity: typeof data.wall_density === 'number' ? Number(data.wall_density) : this.difficultyConfigs[level].wallDensity,
-          optimalMovesMultiplier:
-            typeof data.optimal_moves_multiplier === 'number'
-              ? Number(data.optimal_moves_multiplier)
-              : this.difficultyConfigs[level].optimalMovesMultiplier
-        };
-        this.difficultyConfigs[level] = merged;
-      }
-      // If error or no data -> keep existing (defaults)
-    } catch {
-      // ignore network/schema errors; keep defaults
-    } finally {
-      this.lastFetchedAt[level] = now;
-    }
+  // ===== Results persistence used by your component =====
+  async saveGameResult(params: {
+    user_id: string;
+    difficulty: Level;
+    score: number;
+    time_taken: number;
+    moves_count: number;
+    completed: boolean;
+  }) {
+    const { error } = await supabase.from('key_finder_results').insert(params);
+    if (error) throw error;
   }
 }
 
