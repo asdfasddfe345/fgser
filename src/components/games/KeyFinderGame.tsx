@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Key, Clock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { User, Key, Clock } from 'lucide-react';
 import { keyFinderService } from '../../services/keyFinderService';
 
 interface KeyFinderGameProps {
@@ -10,10 +10,7 @@ interface KeyFinderGameProps {
   onGameExit: () => void;
 }
 
-interface Position {
-  x: number;
-  y: number;
-}
+interface Position { x: number; y: number; }
 
 export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   difficulty,
@@ -23,7 +20,6 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
 }) => {
   const gridSizeMap = { easy: 6, medium: 8, hard: 10 };
   const timeLimitMap = { easy: 360, medium: 300, hard: 240 };
-
   const gridSize = gridSizeMap[difficulty];
   const timeLimit = timeLimitMap[difficulty];
 
@@ -36,17 +32,18 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   const [timeRemaining, setTimeRemaining] = useState(timeLimit);
   const [gameStarted, setGameStarted] = useState(false);
   const [gameOver, setGameOver] = useState(false);
-  const [playerTrail, setPlayerTrail] = useState<Set<string>>(new Set());
+  const [trail, setTrail] = useState<Set<string>>(new Set(['0,0']));
 
-  useEffect(() => {
-    initializeGame();
-  }, [difficulty]);
+  // collision flash (draw a thin red strip on the blocked edge)
+  const [flashEdge, setFlashEdge] = useState<null | { x: number; y: number; dir: 'u'|'d'|'l'|'r' }>(null);
+  const flashTimeout = useRef<number | null>(null);
+
+  useEffect(() => { initializeGame(); }, [difficulty]);
 
   useEffect(() => {
     if (!gameStarted || gameOver) return;
-
-    const timer = setInterval(() => {
-      setTimeRemaining((prev) => {
+    const t = window.setInterval(() => {
+      setTimeRemaining(prev => {
         if (prev <= 1) {
           setGameOver(true);
           handleGameTimeout();
@@ -55,307 +52,195 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
         return prev - 1;
       });
     }, 1000);
-
-    return () => clearInterval(timer);
+    return () => window.clearInterval(t);
   }, [gameStarted, gameOver]);
 
   const initializeGame = () => {
     const newWalls: Position[] = [];
     const obstacleCount = Math.floor(gridSize * gridSize * 0.25);
-
     for (let i = 0; i < obstacleCount; i++) {
-      const wall = {
-        x: Math.floor(Math.random() * gridSize),
-        y: Math.floor(Math.random() * gridSize),
-      };
-      if (!(wall.x === 0 && wall.y === 0)) {
-        newWalls.push(wall);
-      }
+      const wall = { x: Math.floor(Math.random() * gridSize), y: Math.floor(Math.random() * gridSize) };
+      if (!(wall.x === 0 && wall.y === 0)) newWalls.push(wall);
     }
-
-    let newKeyPos: Position;
+    let k: Position;
     do {
-      newKeyPos = {
-        x: Math.floor(Math.random() * gridSize),
-        y: Math.floor(Math.random() * gridSize),
-      };
-    } while (
-      (newKeyPos.x === 0 && newKeyPos.y === 0) ||
-      newWalls.some(w => w.x === newKeyPos.x && w.y === newKeyPos.y)
-    );
-
-    let newExitPos: Position;
+      k = { x: Math.floor(Math.random() * gridSize), y: Math.floor(Math.random() * gridSize) };
+    } while ((k.x === 0 && k.y === 0) || newWalls.some(w => w.x === k.x && w.y === k.y));
+    let e: Position;
     do {
-      newExitPos = {
-        x: Math.floor(Math.random() * gridSize),
-        y: Math.floor(Math.random() * gridSize),
-      };
-    } while (
-      (newExitPos.x === 0 && newExitPos.y === 0) ||
-      (newExitPos.x === newKeyPos.x && newExitPos.y === newKeyPos.y) ||
-      newWalls.some(w => w.x === newExitPos.x && w.y === newExitPos.y)
-    );
+      e = { x: Math.floor(Math.random() * gridSize), y: Math.floor(Math.random() * gridSize) };
+    } while ((e.x === 0 && e.y === 0) || (e.x === k.x && e.y === k.y) || newWalls.some(w => w.x === e.x && w.y === e.y));
 
     setWalls(newWalls);
-    setKeyPos(newKeyPos);
-    setExitPos(newExitPos);
+    setKeyPos(k);
+    setExitPos(e);
     setPlayerPos({ x: 0, y: 0 });
     setHasKey(false);
     setMoves(0);
     setTimeRemaining(timeLimit);
     setGameStarted(true);
     setGameOver(false);
-    setPlayerTrail(new Set(['0,0']));
+    setTrail(new Set(['0,0']));
+    setFlashEdge(null);
   };
 
-  const isWall = (pos: Position): boolean => {
-    return walls.some((wall) => wall.x === pos.x && wall.y === pos.y);
-  };
+  const isWall = (p: Position) => walls.some(w => w.x === p.x && w.y === p.y);
+  const inBounds = (p: Position) => p.x >= 0 && p.x < gridSize && p.y >= 0 && p.y < gridSize;
 
-  const canMove = (dx: number, dy: number): boolean => {
-    const newPos = {
-      x: playerPos.x + dx,
-      y: playerPos.y + dy,
-    };
+  const tryMove = useCallback((dx: number, dy: number) => {
+    if (gameOver || !gameStarted) return;
+    const target = { x: playerPos.x + dx, y: playerPos.y + dy };
+    if (!inBounds(target)) return;
 
-    if (newPos.x < 0 || newPos.x >= gridSize || newPos.y < 0 || newPos.y >= gridSize) {
-      return false;
+    if (isWall(target)) {
+      // flash blocked edge & reset to start (Accenture behavior)
+      const dir = dx === 1 ? 'r' : dx === -1 ? 'l' : dy === 1 ? 'd' : 'u';
+      setFlashEdge({ x: playerPos.x, y: playerPos.y, dir });
+      if (flashTimeout.current) window.clearTimeout(flashTimeout.current);
+      flashTimeout.current = window.setTimeout(() => setFlashEdge(null), 220);
+
+      setPlayerPos({ x: 0, y: 0 });
+      setMoves(m => m + 1);
+      setTrail(new Set(['0,0']));
+      return;
     }
 
-    return true;
+    setPlayerPos(target);
+    setMoves(m => m + 1);
+    setTrail(prev => new Set([...prev, `${target.x},${target.y}`]));
+
+    if (!hasKey && target.x === keyPos.x && target.y === keyPos.y) setHasKey(true);
+    if (hasKey && target.x === exitPos.x && target.y === exitPos.y) handleGameComplete();
+  }, [playerPos, hasKey, gameOver, gameStarted, walls, keyPos, exitPos]);
+
+  // click handler: allow only adjacent (Manhattan distance 1)
+  const onCellClick = (x: number, y: number) => {
+    const dx = x - playerPos.x;
+    const dy = y - playerPos.y;
+    if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+    tryMove(Math.sign(dx), Math.sign(dy));
   };
-
-  const handleMove = useCallback(
-    (dx: number, dy: number) => {
-      if (gameOver || !gameStarted) return;
-
-      const newPos = {
-        x: playerPos.x + dx,
-        y: playerPos.y + dy,
-      };
-
-      if (newPos.x < 0 || newPos.x >= gridSize || newPos.y < 0 || newPos.y >= gridSize) {
-        return;
-      }
-
-      if (isWall(newPos)) {
-        setPlayerPos({ x: 0, y: 0 });
-        setMoves((prev) => prev + 1);
-        setPlayerTrail(new Set(['0,0']));
-        return;
-      }
-
-      setPlayerPos(newPos);
-      setMoves((prev) => prev + 1);
-      setPlayerTrail((prev) => new Set([...prev, `${newPos.x},${newPos.y}`]));
-
-      if (!hasKey && newPos.x === keyPos.x && newPos.y === keyPos.y) {
-        setHasKey(true);
-      }
-
-      if (hasKey && newPos.x === exitPos.x && newPos.y === exitPos.y) {
-        handleGameComplete();
-      }
-    },
-    [playerPos, hasKey, gameOver, gameStarted, walls, keyPos, exitPos, gridSize]
-  );
 
   const handleGameComplete = async () => {
     setGameOver(true);
     const timeTaken = timeLimit - timeRemaining;
-    const score = calculateScore(timeTaken, moves);
-
+    const score = Math.max(0, 1000 - timeTaken * 2 - moves * 5);
     try {
       await keyFinderService.saveGameResult({
-        user_id: userId,
-        difficulty,
-        score,
-        time_taken: timeTaken,
-        moves_count: moves,
-        completed: true,
+        user_id: userId, difficulty, score,
+        time_taken: timeTaken, moves_count: moves, completed: true,
       });
-    } catch (error) {
-      console.error('Error saving game result:', error);
-    }
-
-    setTimeout(() => {
-      onGameComplete(score, timeTaken, moves);
-    }, 1500);
+    } catch {}
+    setTimeout(() => onGameComplete(score, timeTaken, moves), 1000);
   };
 
   const handleGameTimeout = async () => {
     try {
       await keyFinderService.saveGameResult({
-        user_id: userId,
-        difficulty,
-        score: 0,
-        time_taken: timeLimit,
-        moves_count: moves,
-        completed: false,
+        user_id: userId, difficulty, score: 0,
+        time_taken: timeLimit, moves_count: moves, completed: false,
       });
-    } catch (error) {
-      console.error('Error saving timeout result:', error);
-    }
-
-    setTimeout(() => {
-      onGameExit();
-    }, 2000);
+    } catch {}
+    setTimeout(onGameExit, 800);
   };
 
-  const calculateScore = (time: number, moves: number): number => {
-    const baseScore = 1000;
-    const timePenalty = time * 2;
-    const movePenalty = moves * 5;
-    return Math.max(0, baseScore - timePenalty - movePenalty);
-  };
+  const formatTime = (s: number) => `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  const cell = 70;
 
-  const cellSize = 70;
+  // helper: draw diamond navigator for the four neighbors
+  const isNeighbor = (x: number, y: number) =>
+    (Math.abs(x - playerPos.x) + Math.abs(y - playerPos.y)) === 1;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800 py-8 px-4 flex items-center justify-center">
       <div className="max-w-5xl mx-auto">
         <div className="bg-slate-800 rounded-3xl shadow-2xl p-8 border-4 border-slate-700">
-          {/* Game Grid */}
-          <div className="relative mx-auto" style={{ width: 'fit-content' }}>
-            <div
-              className="relative bg-slate-700 rounded-xl overflow-visible p-1"
-              style={{
-                width: gridSize * cellSize,
-                height: gridSize * cellSize,
-              }}
-            >
-              {/* Grid cells */}
-              {Array.from({ length: gridSize * gridSize }).map((_, idx) => {
-                const x = idx % gridSize;
-                const y = Math.floor(idx / gridSize);
-                
-                const isPlayerCell = playerPos.x === x && playerPos.y === y;
-                const isInTrail = playerTrail.has(`${x},${y}`);
-                const isKeyCell = keyPos.x === x && keyPos.y === y && !hasKey;
-                const isExitCell = exitPos.x === x && exitPos.y === y;
-                const isWallCell = isWall({ x, y });
+          <div className="relative mx-auto overflow-hidden rounded-xl" style={{ width: gridSize*cell, height: gridSize*cell }}>
+            <div className="relative bg-slate-700">
+              {Array.from({ length: gridSize * gridSize }).map((_, i) => {
+                const x = i % gridSize;
+                const y = Math.floor(i / gridSize);
+                const isPlayer = playerPos.x === x && playerPos.y === y;
+                const visited = trail.has(`${x},${y}`);
+                const showKey = keyPos.x === x && keyPos.y === y && !hasKey;
+                const showExit = exitPos.x === x && exitPos.y === y;
+                const neighbor = isNeighbor(x, y);
+                const blocked = isWall({ x, y });
 
                 return (
                   <div
-                    key={idx}
-                    className={`absolute border-2 transition-all duration-200 ${
-                      isInTrail 
-                        ? 'bg-slate-600 border-slate-500' 
-                        : 'bg-slate-400 border-slate-300'
-                    }`}
-                    style={{
-                      left: x * cellSize,
-                      top: y * cellSize,
-                      width: cellSize,
-                      height: cellSize,
-                    }}
+                    key={i}
+                    onClick={() => onCellClick(x, y)}
+                    className={`absolute border transition-all duration-150 select-none
+                      ${visited ? 'bg-slate-600 border-slate-500' : 'bg-slate-200 border-slate-300'}
+                      ${neighbor ? 'cursor-pointer hover:brightness-110' : 'cursor-default'}
+                    `}
+                    style={{ left: x*cell, top: y*cell, width: cell, height: cell }}
                   >
-                    {/* Invisible walls - shown as black */}
-                    {isWallCell && !isPlayerCell && (
-                      <div className="w-full h-full bg-black opacity-0"></div>
+                    {/* diamond navigator overlay in neighbors */}
+                    {neighbor && !isPlayer && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="w-8 h-8 rotate-45 rounded-sm bg-white/30 shadow-sm" />
+                      </div>
+                    )}
+
+                    {/* collision red flash on the edge of the player cell */}
+                    {flashEdge && isPlayer && (
+                      <div className="absolute inset-0">
+                        {flashEdge.dir === 'u' && <div className="absolute top-0 left-0 right-0 h-1.5 bg-red-500" />}
+                        {flashEdge.dir === 'd' && <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-red-500" />}
+                        {flashEdge.dir === 'l' && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500" />}
+                        {flashEdge.dir === 'r' && <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-red-500" />}
+                      </div>
                     )}
 
                     {/* Player */}
-                    {isPlayerCell && (
-                      <motion.div
-                        initial={{ scale: 0.8 }}
-                        animate={{ scale: 1 }}
-                        className="w-full h-full flex items-center justify-center relative z-20"
-                      >
+                    {isPlayer && (
+                      <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }}
+                        className="w-full h-full flex items-center justify-center relative z-10">
                         <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-xl border-4 border-slate-700">
-                          <User className="w-9 h-9 text-slate-800" strokeWidth={2.5} />
+                          <User className="w-9 h-9 text-slate-800" strokeWidth={2.5}/>
                         </div>
                       </motion.div>
                     )}
 
-                    {/* Key */}
-                    {isKeyCell && !isPlayerCell && (
+                    {/* Key (always visible) */}
+                    {showKey && !isPlayer && (
                       <div className="w-full h-full flex items-center justify-center">
-                        <Key className="w-10 h-10 text-slate-900" fill="currentColor" strokeWidth={0} />
+                        <Key className="w-10 h-10 text-slate-900" fill="currentColor" strokeWidth={0}/>
                       </div>
                     )}
 
-                    {/* Exit Door */}
-                    {isExitCell && hasKey && !isPlayerCell && (
+                    {/* Door (always visible; requires key to finish) */}
+                    {showExit && !isPlayer && (
                       <div className="w-full h-full flex items-center justify-center p-2">
                         <div className="w-full h-full border-4 border-slate-900 bg-white rounded-lg flex items-center justify-center relative">
-                          <div className="absolute right-2 top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 rounded-full"></div>
+                          <div className="absolute right-2 top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 rounded-full" />
                         </div>
                       </div>
                     )}
+
+                    {/* Invisible walls: do NOT render visually (they’re hidden obstacles) */}
+                    {/* kept blank intentionally */}
+                    {blocked && null}
                   </div>
                 );
               })}
             </div>
-
-            {/* Directional Arrow Buttons */}
-            {canMove(0, -1) && (
-              <button
-                onClick={() => handleMove(0, -1)}
-                disabled={gameOver}
-                className="absolute left-1/2 -translate-x-1/2 bg-slate-700 hover:bg-slate-600 rounded-full p-4 transition-all disabled:opacity-30 disabled:cursor-not-allowed z-30 shadow-xl border-2 border-slate-600"
-                style={{ top: -70 }}
-              >
-                <ChevronUp className="w-8 h-8 text-slate-200" strokeWidth={3} />
-              </button>
-            )}
-
-            {canMove(0, 1) && (
-              <button
-                onClick={() => handleMove(0, 1)}
-                disabled={gameOver}
-                className="absolute left-1/2 -translate-x-1/2 bg-slate-700 hover:bg-slate-600 rounded-full p-4 transition-all disabled:opacity-30 disabled:cursor-not-allowed z-30 shadow-xl border-2 border-slate-600"
-                style={{ bottom: -70 }}
-              >
-                <ChevronDown className="w-8 h-8 text-slate-200" strokeWidth={3} />
-              </button>
-            )}
-
-            {canMove(-1, 0) && (
-              <button
-                onClick={() => handleMove(-1, 0)}
-                disabled={gameOver}
-                className="absolute top-1/2 -translate-y-1/2 bg-slate-700 hover:bg-slate-600 rounded-full p-4 transition-all disabled:opacity-30 disabled:cursor-not-allowed z-30 shadow-xl border-2 border-slate-600"
-                style={{ left: -70 }}
-              >
-                <ChevronLeft className="w-8 h-8 text-slate-200" strokeWidth={3} />
-              </button>
-            )}
-
-            {canMove(1, 0) && (
-              <button
-                onClick={() => handleMove(1, 0)}
-                disabled={gameOver}
-                className="absolute top-1/2 -translate-y-1/2 bg-slate-700 hover:bg-slate-600 rounded-full p-4 transition-all disabled:opacity-30 disabled:cursor-not-allowed z-30 shadow-xl border-2 border-slate-600"
-                style={{ right: -70 }}
-              >
-                <ChevronRight className="w-8 h-8 text-slate-200" strokeWidth={3} />
-              </button>
-            )}
           </div>
 
-          {/* Timer and Instructions */}
-          <div className="mt-12 text-center">
+          {/* HUD */}
+          <div className="mt-8 text-center">
             <div className="flex items-center justify-center space-x-3 mb-6">
               <div className="bg-slate-700 rounded-full px-6 py-3 flex items-center space-x-3 border-2 border-slate-600 shadow-lg">
                 <Clock className="w-6 h-6 text-slate-200" />
-                <span className="text-2xl font-bold text-white">
-                  {formatTime(timeRemaining)}
-                </span>
+                <span className="text-2xl font-bold text-white">{formatTime(timeRemaining)}</span>
               </div>
             </div>
-
             <p className="text-slate-200 text-xl font-medium mb-6">
-              Collect <span className="text-yellow-400 font-bold">1 KEY</span> then get to the{' '}
-              <span className="text-green-400 font-bold">DOOR</span>
+              Collect <span className="text-yellow-400 font-bold">1 KEY</span> then get to the <span className="text-green-400 font-bold">DOOR</span>
             </p>
-
             <button
               onClick={onGameExit}
               className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-lg transition-colors shadow-lg"
@@ -364,27 +249,17 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
             </button>
           </div>
 
-          {/* Game Over Overlay */}
           <AnimatePresence>
             {gameOver && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
-              >
-                <motion.div
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="bg-slate-800 rounded-2xl p-8 max-w-md text-center border-4 border-slate-600"
-                >
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+                <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                  className="bg-slate-800 rounded-2xl p-8 max-w-md text-center border-4 border-slate-600">
                   <h2 className="text-3xl font-bold text-white mb-4">
                     {timeRemaining === 0 ? "Time's Up!" : 'Congratulations!'}
                   </h2>
                   <p className="text-slate-300 text-lg">
-                    {timeRemaining === 0
-                      ? 'You ran out of time. Try again!'
-                      : 'You found the exit!'}
+                    {timeRemaining === 0 ? 'You ran out of time. Try again!' : 'You found the exit!'}
                   </p>
                 </motion.div>
               </motion.div>
