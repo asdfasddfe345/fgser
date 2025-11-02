@@ -21,15 +21,18 @@ const arrowForDelta = (dx: number, dy: number) => {
   return '';
 };
 
+// UPDATED: exam-like sizes & 5:00 per level
+const gridSizeMap = { easy: 8, medium: 10, hard: 12 } as const;
+const timeLimitMap = { easy: 300, medium: 300, hard: 300 } as const;
+// Slightly scaling wall density by level
+const wallDensityMap = { easy: 0.20, medium: 0.24, hard: 0.28 } as const;
+
 export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   difficulty,
   userId,
   onGameComplete,
   onGameExit,
 }) => {
-  const gridSizeMap = { easy: 6, medium: 8, hard: 10 } as const;
-  const timeLimitMap = { easy: 360, medium: 300, hard: 240 } as const;
-
   const gridSize = gridSizeMap[difficulty];
   const timeLimit = timeLimitMap[difficulty];
   const cell = 70;
@@ -67,18 +70,22 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
 
   const initializeGame = () => {
     const newWalls: Position[] = [];
-    const obstacleCount = Math.floor(gridSize * gridSize * 0.25);
+    const obstacleCount = Math.floor(gridSize * gridSize * wallDensityMap[difficulty]);
 
-    for (let i = 0; i < obstacleCount; i++) {
+    // random hidden walls (keep start (0,0) empty)
+    while (newWalls.length < obstacleCount) {
       const wall = { x: Math.floor(Math.random() * gridSize), y: Math.floor(Math.random() * gridSize) };
-      if (!(wall.x === 0 && wall.y === 0)) newWalls.push(wall);
+      const dup = newWalls.some(w => w.x === wall.x && w.y === wall.y);
+      if (!dup && !(wall.x === 0 && wall.y === 0)) newWalls.push(wall);
     }
 
+    // place key
     let k: Position;
     do {
       k = { x: Math.floor(Math.random() * gridSize), y: Math.floor(Math.random() * gridSize) };
     } while ((k.x === 0 && k.y === 0) || newWalls.some(w => w.x === k.x && w.y === k.y));
 
+    // place exit
     let e: Position;
     do {
       e = { x: Math.floor(Math.random() * gridSize), y: Math.floor(Math.random() * gridSize) };
