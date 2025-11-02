@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock } from 'lucide-react';
+import { Clock, HelpCircle } from 'lucide-react';
 import { keyFinderService } from '../../services/keyFinderService';
 
 type Difficulty = 'easy' | 'medium' | 'hard';
@@ -37,7 +37,9 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
 }) => {
   const gridSize = GRID_MAP[difficulty];
   const timeLimit = TIME_MAP[difficulty];
-  const cell = Math.max(24, Math.floor(boardPx / gridSize) - 2); // ↓ 2px smaller
+
+  // 2px smaller cell per your request
+  const cell = Math.max(24, Math.floor(boardPx / gridSize) - 2);
 
   const [player, setPlayer] = useState<Pos>({ x: 0, y: 0 });
   const [keyPos, setKeyPos] = useState<Pos>({ x: 0, y: 0 });
@@ -50,6 +52,10 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   const [over, setOver] = useState(false);
   const [trail, setTrail] = useState<Set<string>>(new Set(['0,0']));
   const [flashEdge, setFlashEdge] = useState<null | { x: number; y: number; dir: Dir }>(null);
+
+  // How-to-play UI
+  const [showHelp, setShowHelp] = useState(true);
+
   const flashTO = useRef<number | null>(null);
 
   useEffect(() => { init(); }, [difficulty]);
@@ -68,6 +74,19 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
     }, 1000);
     return () => window.clearInterval(t);
   }, [started, over]);
+
+  // Optional keyboard controls (Arrows / WASD)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!started || over) return;
+      if (['ArrowUp', 'KeyW'].includes(e.code)) { e.preventDefault(); tryMove(0, -1); }
+      else if (['ArrowDown', 'KeyS'].includes(e.code)) { e.preventDefault(); tryMove(0, 1); }
+      else if (['ArrowLeft', 'KeyA'].includes(e.code)) { e.preventDefault(); tryMove(-1, 0); }
+      else if (['ArrowRight', 'KeyD'].includes(e.code)) { e.preventDefault(); tryMove(1, 0); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [started, over, player, hasKey, walls, keyPos, exitPos]); // deps used in tryMove
 
   const init = () => {
     const obstacles: Pos[] = [];
@@ -115,7 +134,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
       if (flashTO.current) window.clearTimeout(flashTO.current);
       flashTO.current = window.setTimeout(() => setFlashEdge(null), 220);
 
-      // collision resets to start and drops key
+      // collision resets to start and drops key (key remains where it originally was)
       setPlayer({ x: 0, y: 0 });
       setHasKey(false);
       setMoves(m => m + 1);
@@ -175,7 +194,17 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800 py-8 px-4 flex items-center justify-center">
       <div className="max-w-6xl mx-auto">
-        <div className="bg-slate-800 rounded-3xl shadow-2xl p-8 border-4 border-slate-700">
+        <div className="bg-slate-800 rounded-3xl shadow-2xl p-8 border-4 border-slate-700 relative">
+          {/* Help button */}
+          <button
+            onClick={() => setShowHelp(true)}
+            className="absolute -top-4 -right-4 bg-cyan-600 hover:bg-cyan-700 text-white rounded-full p-3 shadow-xl"
+            aria-label="How to play"
+            title="How to play"
+          >
+            <HelpCircle className="w-5 h-5" />
+          </button>
+
           <div
             className="relative mx-auto overflow-hidden rounded-2xl bg-slate-700"
             style={{ width: gridSize * cell, height: gridSize * cell }}
@@ -209,6 +238,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                     borderColor: 'rgba(100,116,139,0.6)',
                     boxShadow: 'inset 0 0 0 0.5px rgba(15,23,42,0.12)',
                   }}
+                  title={neighbor ? 'Click to move' : undefined}
                 >
                   {neighbor && !isPlayer && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -236,12 +266,12 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                   )}
                   {showKey && !isPlayer && (
                     <div className="w-full h-full flex items-center justify-center">
-                      <span className="text-2xl select-none">🔑</span>
+                      <span className="text-2xl select-none" role="img" aria-label="key">🔑</span>
                     </div>
                   )}
                   {showExit && !isPlayer && (
                     <div className="w-full h-full flex items-center justify-center">
-                      <span className="text-2xl select-none">🏠</span>
+                      <span className="text-2xl select-none" role="img" aria-label="home">🏠</span>
                     </div>
                   )}
                   {blocked && null}
@@ -258,8 +288,8 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
               </div>
             </div>
             <p className="text-slate-200 text-xl font-medium mb-6">
-              Collect <span className="text-yellow-400 font-bold">1 KEY</span> then get to the{' '}
-              <span className="text-green-400 font-bold">DOOR</span>
+              Collect <span className="text-yellow-400 font-bold">1 KEY</span> then reach the{' '}
+              <span className="text-green-400 font-bold">DOOR</span>. Avoid walls!
             </p>
             <button
               onClick={onGameExit}
@@ -269,6 +299,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
             </button>
           </div>
 
+          {/* RESULT OVERLAY */}
           <AnimatePresence>
             {over && (
               <motion.div
@@ -285,6 +316,48 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                   <p className="text-slate-300 text-lg">
                     {timeLeft === 0 ? 'You ran out of time. Try again!' : 'You found the door!'}
                   </p>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* HOW-TO-PLAY OVERLAY */}
+          <AnimatePresence>
+            {showHelp && (
+              <motion.div
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              >
+                <motion.div
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: 20, opacity: 0 }}
+                  className="w-full max-w-2xl rounded-2xl border-2 border-cyan-400 bg-slate-900 text-slate-100 p-6 shadow-2xl"
+                >
+                  <h3 className="text-2xl font-bold mb-2">How to play</h3>
+                  <p className="text-slate-300 mb-4">
+                    This is an Accenture-style <span className="font-semibold">Key Finder</span> memory maze.
+                    The grid is {gridSize}×{gridSize} ({difficulty}).
+                  </p>
+
+                  <ul className="space-y-2 text-slate-200 list-disc pl-5">
+                    <li><span className="font-semibold">Goal:</span> Pick up the 🔑 then reach the 🏠 before the timer ends.</li>
+                    <li><span className="font-semibold">Movement:</span> Click a highlighted neighbor cell, or use <kbd>WASD</kbd>/<kbd>Arrow Keys</kbd>.</li>
+                    <li><span className="font-semibold">Walls:</span> Hitting a wall resets you to start and you <span className="underline">drop the key</span>. The 🔑 becomes visible again at its original spot.</li>
+                    <li><span className="font-semibold">Trail:</span> Visited tiles darken to help memory; walls are invisible until you collide.</li>
+                    <li><span className="font-semibold">Timer:</span> {Math.floor(timeLimit/60)} minutes total. When it hits zero, the run fails.</li>
+                    <li><span className="font-semibold">Score:</span> Starts at 1000, minus <code>2 × seconds</code> and <code>5 × moves</code>.</li>
+                    <li><span className="font-semibold">Difficulties:</span> Easy 4×4, Medium 5×5, Hard 6×6.</li>
+                  </ul>
+
+                  <div className="mt-6 flex items-center justify-end gap-3">
+                    <button
+                      onClick={() => setShowHelp(false)}
+                      className="px-5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-semibold"
+                    >
+                      Got it, let’s play
+                    </button>
+                  </div>
                 </motion.div>
               </motion.div>
             )}
