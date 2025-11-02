@@ -21,21 +21,25 @@ const arrowForDelta = (dx: number, dy: number) => {
   return '';
 };
 
-// UPDATED: exam-like sizes & 5:00 per level
-const gridSizeMap = { easy: 8, medium: 10, hard: 12 } as const;
-const timeLimitMap = { easy: 300, medium: 300, hard: 300 } as const;
-// Slightly scaling wall density by level
-const wallDensityMap = { easy: 0.20, medium: 0.24, hard: 0.28 } as const;
+// Accenture-style sizes + same 5:00 per level
+const GRID_SIZE = { easy: 8, medium: 10, hard: 12 } as const;
+const TIME_LIMIT = { easy: 300, medium: 300, hard: 300 } as const;
+// Hidden wall density scales with difficulty
+const WALL_DENSITY = { easy: 0.20, medium: 0.24, hard: 0.28 } as const;
 
-export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
+const BOARD_PX = 560; // board width/height target; cell auto-scales by grid
+
+const rand = (n: number) => Math.floor(Math.random() * n);
+
+const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   difficulty,
   userId,
   onGameComplete,
   onGameExit,
 }) => {
-  const gridSize = gridSizeMap[difficulty];
-  const timeLimit = timeLimitMap[difficulty];
-  const cell = 70;
+  const gridSize = GRID_SIZE[difficulty];
+  const timeLimit = TIME_LIMIT[difficulty];
+  const cell = Math.floor(BOARD_PX / gridSize);
 
   const [playerPos, setPlayerPos] = useState<Position>({ x: 0, y: 0 });
   const [keyPos, setKeyPos] = useState<Position>({ x: 0, y: 0 });
@@ -70,25 +74,22 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
 
   const initializeGame = () => {
     const newWalls: Position[] = [];
-    const obstacleCount = Math.floor(gridSize * gridSize * wallDensityMap[difficulty]);
+    const obstacleCount = Math.floor(gridSize * gridSize * WALL_DENSITY[difficulty]);
 
-    // random hidden walls (keep start (0,0) empty)
     while (newWalls.length < obstacleCount) {
-      const wall = { x: Math.floor(Math.random() * gridSize), y: Math.floor(Math.random() * gridSize) };
-      const dup = newWalls.some(w => w.x === wall.x && w.y === wall.y);
-      if (!dup && !(wall.x === 0 && wall.y === 0)) newWalls.push(wall);
+      const w = { x: rand(gridSize), y: rand(gridSize) };
+      const dup = newWalls.some(p => p.x === w.x && p.y === w.y);
+      if (!dup && !(w.x === 0 && w.y === 0)) newWalls.push(w);
     }
 
-    // place key
     let k: Position;
     do {
-      k = { x: Math.floor(Math.random() * gridSize), y: Math.floor(Math.random() * gridSize) };
+      k = { x: rand(gridSize), y: rand(gridSize) };
     } while ((k.x === 0 && k.y === 0) || newWalls.some(w => w.x === k.x && w.y === k.y));
 
-    // place exit
     let e: Position;
     do {
-      e = { x: Math.floor(Math.random() * gridSize), y: Math.floor(Math.random() * gridSize) };
+      e = { x: rand(gridSize), y: rand(gridSize) };
     } while (
       (e.x === 0 && e.y === 0) ||
       (e.x === k.x && e.y === k.y) ||
@@ -106,10 +107,13 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
     setGameOver(false);
     setTrail(new Set(['0,0']));
     setFlashEdge(null);
+    // console.log('KeyFinder →', difficulty, 'gridSize:', gridSize);
   };
 
   const isWall = (p: Position) => walls.some(w => w.x === p.x && w.y === p.y);
   const inBounds = (p: Position) => p.x >= 0 && p.x < gridSize && p.y >= 0 && p.y < gridSize;
+  const isNeighbor = (x: number, y: number) =>
+    (Math.abs(x - playerPos.x) + Math.abs(y - playerPos.y)) === 1;
 
   const tryMove = useCallback((dx: number, dy: number) => {
     if (gameOver || !gameStarted) return;
@@ -138,7 +142,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   const onCellClick = (x: number, y: number) => {
     const dx = x - playerPos.x;
     const dy = y - playerPos.y;
-    if (Math.abs(dx) + Math.abs(dy) !== 1) return; // only 4-neighbor moves
+    if (Math.abs(dx) + Math.abs(dy) !== 1) return;
     tryMove(Math.sign(dx), Math.sign(dy));
   };
 
@@ -156,7 +160,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
         completed: true,
       });
     } catch {}
-    setTimeout(() => onGameComplete(score, timeTaken, moves), 1000);
+    setTimeout(() => onGameComplete(score, timeTaken, moves), 800);
   };
 
   const handleGameTimeout = async () => {
@@ -170,11 +174,10 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
         completed: false,
       });
     } catch {}
-    setTimeout(onGameExit, 800);
+    setTimeout(onGameExit, 600);
   };
 
   const formatTime = (s: number) => `${Math.floor(s/60)}:${(s%60).toString().padStart(2, '0')}`;
-  const isNeighbor = (x: number, y: number) => (Math.abs(x - playerPos.x) + Math.abs(y - playerPos.y)) === 1;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800 py-8 px-4 flex items-center justify-center">
@@ -208,7 +211,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                     `}
                     style={{ left: x * cell, top: y * cell, width: cell, height: cell }}
                   >
-                    {/* Neighbor diamond + direction arrow */}
+                    {/* neighbor diamond + direction arrow */}
                     {neighbor && !isPlayer && (
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="w-8 h-8 rotate-45 rounded-sm bg-white/30 shadow-sm" />
@@ -218,7 +221,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                       </div>
                     )}
 
-                    {/* Red edge flash on blocked move */}
+                    {/* red edge flash on blocked move */}
                     {flashEdge && isPlayer && (
                       <div className="absolute inset-0">
                         {flashEdge.dir === 'u' && <div className="absolute top-0 left-0 right-0 h-1.5 bg-red-500" />}
@@ -228,7 +231,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                       </div>
                     )}
 
-                    {/* Player (emoji avatar) */}
+                    {/* player */}
                     {isPlayer && (
                       <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }}
                         className="w-full h-full flex items-center justify-center relative z-10">
@@ -238,21 +241,21 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                       </motion.div>
                     )}
 
-                    {/* 🔑 Key */}
+                    {/* key */}
                     {showKey && !isPlayer && (
                       <div className="w-full h-full flex items-center justify-center">
                         <span className="text-2xl select-none">🔑</span>
                       </div>
                     )}
 
-                    {/* 🏠 Door */}
+                    {/* door (home) */}
                     {showExit && !isPlayer && (
                       <div className="w-full h-full flex items-center justify-center">
                         <span className="text-2xl select-none">🏠</span>
                       </div>
                     )}
 
-                    {/* walls are invisible */}
+                    {/* walls invisible */}
                     {blocked && null}
                   </div>
                 );
@@ -280,7 +283,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
             </button>
           </div>
 
-          {/* Overlay */}
+          {/* finish / timeout overlay */}
           <AnimatePresence>
             {gameOver && (
               <motion.div
