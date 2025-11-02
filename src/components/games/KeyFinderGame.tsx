@@ -21,13 +21,12 @@ const arrowForDelta = (dx: number, dy: number) => {
   return '';
 };
 
-// UPDATED: exam-like sizes & 5:00 per level
+// Exam-like sizes & 5:00 per level
 const gridSizeMap = { easy: 8, medium: 10, hard: 12 } as const;
 const timeLimitMap = { easy: 300, medium: 300, hard: 300 } as const;
-// Slightly scaling wall density by level
 const wallDensityMap = { easy: 0.20, medium: 0.24, hard: 0.28 } as const;
 
-export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
+const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   difficulty,
   userId,
   onGameComplete,
@@ -35,7 +34,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
 }) => {
   const gridSize = gridSizeMap[difficulty];
   const timeLimit = timeLimitMap[difficulty];
-  const cell = 70;
+  const cell = 70; // px
 
   const [playerPos, setPlayerPos] = useState<Position>({ x: 0, y: 0 });
   const [keyPos, setKeyPos] = useState<Position>({ x: 0, y: 0 });
@@ -72,20 +71,17 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
     const newWalls: Position[] = [];
     const obstacleCount = Math.floor(gridSize * gridSize * wallDensityMap[difficulty]);
 
-    // random hidden walls (keep start (0,0) empty)
     while (newWalls.length < obstacleCount) {
       const wall = { x: Math.floor(Math.random() * gridSize), y: Math.floor(Math.random() * gridSize) };
       const dup = newWalls.some(w => w.x === wall.x && w.y === wall.y);
       if (!dup && !(wall.x === 0 && wall.y === 0)) newWalls.push(wall);
     }
 
-    // place key
     let k: Position;
     do {
       k = { x: Math.floor(Math.random() * gridSize), y: Math.floor(Math.random() * gridSize) };
     } while ((k.x === 0 && k.y === 0) || newWalls.some(w => w.x === k.x && w.y === k.y));
 
-    // place exit
     let e: Position;
     do {
       e = { x: Math.floor(Math.random() * gridSize), y: Math.floor(Math.random() * gridSize) };
@@ -106,6 +102,16 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
     setGameOver(false);
     setTrail(new Set(['0,0']));
     setFlashEdge(null);
+
+    // DEBUG: see real values in console
+    // (This is what you asked for in CHANGE 1)
+    console.log('Game initialized:', {
+      gridSize,
+      playerPos: { x: 0, y: 0 },
+      keyPos: k,
+      exitPos: e,
+      wallCount: newWalls.length
+    });
   };
 
   const isWall = (p: Position) => walls.some(w => w.x === p.x && w.y === p.y);
@@ -138,7 +144,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   const onCellClick = (x: number, y: number) => {
     const dx = x - playerPos.x;
     const dy = y - playerPos.y;
-    if (Math.abs(dx) + Math.abs(dy) !== 1) return; // only 4-neighbor moves
+    if (Math.abs(dx) + Math.abs(dy) !== 1) return;
     tryMove(Math.sign(dx), Math.sign(dy));
   };
 
@@ -180,84 +186,88 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800 py-8 px-4 flex items-center justify-center">
       <div className="max-w-5xl mx-auto">
         <div className="bg-slate-800 rounded-3xl shadow-2xl p-8 border-4 border-slate-700">
-          {/* Board */}
+
+          {/* Board (fixed sizing) */}
           <div
-            className="relative mx-auto overflow-hidden rounded-xl"
-            style={{ width: gridSize * cell, height: gridSize * cell }}
+            className="relative mx-auto overflow-hidden rounded-xl bg-slate-700"
+            style={{ width: `${gridSize * cell}px`, height: `${gridSize * cell}px` }}
           >
-            <div className="relative bg-slate-700">
-              {Array.from({ length: gridSize * gridSize }).map((_, i) => {
-                const x = i % gridSize;
-                const y = Math.floor(i / gridSize);
+            {Array.from({ length: gridSize * gridSize }).map((_, i) => {
+              const x = i % gridSize;
+              const y = Math.floor(i / gridSize);
 
-                const isPlayer = playerPos.x === x && playerPos.y === y;
-                const visited = trail.has(`${x},${y}`);
-                const neighbor = isNeighbor(x, y);
-                const blocked = isWall({ x, y });
-                const showKey = keyPos.x === x && keyPos.y === y && !hasKey;
-                const showExit = exitPos.x === x && exitPos.y === y;
+              const isPlayer = playerPos.x === x && playerPos.y === y;
+              const visited = trail.has(`${x},${y}`);
+              const neighbor = isNeighbor(x, y);
+              const blocked = isWall({ x, y });
+              const showKey = keyPos.x === x && keyPos.y === y && !hasKey;
+              const showExit = exitPos.x === x && exitPos.y === y;
 
-                return (
-                  <div
-                    key={i}
-                    onClick={() => onCellClick(x, y)}
-                    className={`absolute border transition-all duration-150 select-none
-                      ${visited ? 'bg-slate-600 border-slate-500' : 'bg-slate-200 border-slate-300'}
-                      ${neighbor ? 'cursor-pointer hover:brightness-110' : 'cursor-default'}
-                      group
-                    `}
-                    style={{ left: x * cell, top: y * cell, width: cell, height: cell }}
-                  >
-                    {/* Neighbor diamond + direction arrow */}
-                    {neighbor && !isPlayer && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="w-8 h-8 rotate-45 rounded-sm bg-white/30 shadow-sm" />
-                        <div className="absolute text-slate-800/80 text-lg font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
-                          {arrowForDelta(x - playerPos.x, y - playerPos.y)}
-                        </div>
+              return (
+                <div
+                  key={`${x}-${y}`}
+                  onClick={() => onCellClick(x, y)}
+                  className={`absolute border transition-all duration-150 select-none
+                    ${visited ? 'bg-slate-600 border-slate-500' : 'bg-slate-200 border-slate-300'}
+                    ${neighbor ? 'cursor-pointer hover:brightness-110' : 'cursor-default'}
+                    group
+                  `}
+                  style={{
+                    left: `${x * cell}px`,
+                    top: `${y * cell}px`,
+                    width: `${cell}px`,
+                    height: `${cell}px`
+                  }}
+                >
+                  {/* Neighbor diamond + direction arrow */}
+                  {neighbor && !isPlayer && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-8 h-8 rotate-45 rounded-sm bg-white/30 shadow-sm" />
+                      <div className="absolute text-slate-800/80 text-lg font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                        {arrowForDelta(x - playerPos.x, y - playerPos.y)}
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                    {/* Red edge flash on blocked move */}
-                    {flashEdge && isPlayer && (
-                      <div className="absolute inset-0">
-                        {flashEdge.dir === 'u' && <div className="absolute top-0 left-0 right-0 h-1.5 bg-red-500" />}
-                        {flashEdge.dir === 'd' && <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-red-500" />}
-                        {flashEdge.dir === 'l' && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500" />}
-                        {flashEdge.dir === 'r' && <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-red-500" />}
+                  {/* Red edge flash on blocked move */}
+                  {flashEdge && isPlayer && (
+                    <div className="absolute inset-0">
+                      {flashEdge.dir === 'u' && <div className="absolute top-0 left-0 right-0 h-1.5 bg-red-500" />}
+                      {flashEdge.dir === 'd' && <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-red-500" />}
+                      {flashEdge.dir === 'l' && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500" />}
+                      {flashEdge.dir === 'r' && <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-red-500" />}
+                    </div>
+                  )}
+
+                  {/* Player */}
+                  {isPlayer && (
+                    <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }}
+                      className="w-full h-full flex items-center justify-center relative z-10">
+                      <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-xl border-4 border-slate-700">
+                        <span className="text-2xl select-none">👤</span>
                       </div>
-                    )}
+                    </motion.div>
+                  )}
 
-                    {/* Player (emoji avatar) */}
-                    {isPlayer && (
-                      <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }}
-                        className="w-full h-full flex items-center justify-center relative z-10">
-                        <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-xl border-4 border-slate-700">
-                          <span className="text-2xl select-none">👤</span>
-                        </div>
-                      </motion.div>
-                    )}
+                  {/* 🔑 Key */}
+                  {showKey && !isPlayer && (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <span className="text-2xl select-none">🔑</span>
+                    </div>
+                  )}
 
-                    {/* 🔑 Key */}
-                    {showKey && !isPlayer && (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <span className="text-2xl select-none">🔑</span>
-                      </div>
-                    )}
+                  {/* 🏠 Door */}
+                  {showExit && !isPlayer && (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <span className="text-2xl select-none">🏠</span>
+                    </div>
+                  )}
 
-                    {/* 🏠 Door */}
-                    {showExit && !isPlayer && (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <span className="text-2xl select-none">🏠</span>
-                      </div>
-                    )}
-
-                    {/* walls are invisible */}
-                    {blocked && null}
-                  </div>
-                );
-              })}
-            </div>
+                  {/* Walls are invisible */}
+                  {blocked && null}
+                </div>
+              );
+            })}
           </div>
 
           {/* HUD */}
