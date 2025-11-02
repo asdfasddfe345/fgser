@@ -22,7 +22,7 @@ const arrowForDelta = (dx: number, dy: number) => {
 };
 
 // UPDATED: exam-like sizes & 5:00 per level
-const gridSizeMap = { easy: 8, medium: 10, hard: 12 } as const;
+const gridSizeMap = { easy: 4, medium: 10, hard: 12 } as const;
 const timeLimitMap = { easy: 300, medium: 300, hard: 300 } as const;
 // Slightly scaling wall density by level
 const wallDensityMap = { easy: 0.20, medium: 0.24, hard: 0.28 } as const;
