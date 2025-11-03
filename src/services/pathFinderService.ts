@@ -1,8 +1,8 @@
+// src/services/pathFinderService.ts
 import { supabase } from '../lib/supabaseClient';
 import {
   GridConfig,
   GridTile,
-  TilePattern,
   TileRotation,
   PathValidationResult,
   ScoreCalculation,
@@ -11,8 +11,8 @@ import {
   MoveHistory,
   ConnectionPoints
 } from '../types/pathfinder';
-import { GameLevel } from '../types/gaming';
-import { getTilePatternsByDifficulty, getRandomTilePattern } from '../data/tilePatterns';
+import { getRandomTilePattern } from '../data/tilePatterns';
+import { rotateDirections, OPP } from '../helpers/direction';
 
 class PathFinderService {
   generateGrid(gridSize: number, levelNumber: number): GridConfig {
@@ -60,9 +60,7 @@ class PathFinderService {
 
   rotateConnectionPoints(connections: ConnectionPoints, rotation: TileRotation): ConnectionPoints {
     if (rotation === 0) return connections;
-
     let result = { ...connections };
-
     const rotations = rotation / 90;
     for (let i = 0; i < rotations; i++) {
       result = {
@@ -72,97 +70,66 @@ class PathFinderService {
         bottom: result.right
       };
     }
-
     return result;
   }
 
   validatePath(gridConfig: GridConfig): PathValidationResult {
     const { tiles, startPosition, endPosition, gridSize } = gridConfig;
-    const visited = Array(gridSize).fill(null).map(() => Array(gridSize).fill(false));
-    const path: { row: number; col: number }[] = [];
-
-    const queue: { row: number; col: number; path: { row: number; col: number }[] }[] = [
+    const seen = Array.from({ length: gridSize }, () => Array(gridSize).fill(false));
+    const q: { row: number; col: number; path: { row: number; col: number }[] }[] = [
       { ...startPosition, path: [startPosition] }
     ];
-    visited[startPosition.row][startPosition.col] = true;
+    seen[startPosition.row][startPosition.col] = true;
 
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      const currentTile = tiles[current.row][current.col];
-      const rotatedConnections = this.rotateConnectionPoints(
-        currentTile.pattern.connection_points,
-        currentTile.rotation
-      );
-
-      if (current.row === endPosition.row && current.col === endPosition.col) {
-        return {
-          isValid: true,
-          pathTiles: current.path,
-          message: 'Valid path found!'
-        };
+    while (q.length) {
+      const cur = q.shift()!;
+      if (cur.row === endPosition.row && cur.col === endPosition.col) {
+        return { isValid: true, pathTiles: cur.path, message: 'Valid path found!' };
       }
 
-      const neighbors = [
-        { row: current.row - 1, col: current.col, direction: 'top', opposite: 'bottom' },
-        { row: current.row + 1, col: current.col, direction: 'bottom', opposite: 'top' },
-        { row: current.row, col: current.col - 1, direction: 'left', opposite: 'right' },
-        { row: current.row, col: current.col + 1, direction: 'right', opposite: 'left' }
+      const curTile = tiles[cur.row][cur.col];
+      const curExits = rotateDirections(curTile.pattern.arrow_directions, curTile.rotation);
+
+      const candidates: { nr: number; nc: number; dir: 'up' | 'down' | 'left' | 'right' }[] = [
+        { nr: cur.row - 1, nc: cur.col, dir: 'up' },
+        { nr: cur.row + 1, nc: cur.col, dir: 'down' },
+        { nr: cur.row, nc: cur.col - 1, dir: 'left' },
+        { nr: cur.row, nc: cur.col + 1, dir: 'right' }
       ];
 
-      for (const neighbor of neighbors) {
-        if (
-          neighbor.row < 0 || neighbor.row >= gridSize ||
-          neighbor.col < 0 || neighbor.col >= gridSize ||
-          visited[neighbor.row][neighbor.col]
-        ) {
-          continue;
-        }
+      for (const { nr, nc, dir } of candidates) {
+        if (nr < 0 || nr >= gridSize || nc < 0 || nc >= gridSize || seen[nr][nc]) continue;
+        if (!curExits.includes(dir)) continue;
 
-        const hasCurrentConnection = rotatedConnections[neighbor.direction as keyof ConnectionPoints];
+        const nxtTile = tiles[nr][nc];
+        const nxtExits = rotateDirections(nxtTile.pattern.arrow_directions, nxtTile.rotation);
+        if (!nxtExits.includes(OPP[dir])) continue;
 
-        if (!hasCurrentConnection) {
-          continue;
-        }
-
-        const neighborTile = tiles[neighbor.row][neighbor.col];
-        const neighborConnections = this.rotateConnectionPoints(
-          neighborTile.pattern.connection_points,
-          neighborTile.rotation
-        );
-        const hasNeighborConnection = neighborConnections[neighbor.opposite as keyof ConnectionPoints];
-
-        if (hasNeighborConnection) {
-          visited[neighbor.row][neighbor.col] = true;
-          queue.push({
-            row: neighbor.row,
-            col: neighbor.col,
-            path: [...current.path, { row: neighbor.row, col: neighbor.col }]
-          });
-        }
+        seen[nr][nc] = true;
+        q.push({ row: nr, col: nc, path: [...cur.path, { row: nr, col: nc }] });
       }
     }
 
-    return {
-      isValid: false,
-      pathTiles: [],
-      message: 'No valid path found. Keep adjusting tiles!'
-    };
+    return { isValid: false, pathTiles: [], message: 'No valid path found. Keep adjusting tiles!' };
   }
 
   rotateTile(tile: GridTile): GridTile {
     const newRotation = ((tile.rotation + 90) % 360) as TileRotation;
-    return {
-      ...tile,
-      rotation: newRotation
-    };
+    return { ...tile, rotation: newRotation };
   }
 
   flipTile(tile: GridTile): GridTile {
-    const newRotation = ((tile.rotation + 180) % 360) as TileRotation;
-    return {
-      ...tile,
-      rotation: newRotation
-    };
+    const t = tile.pattern.pattern_type;
+    let rot = tile.rotation;
+
+    if (t === 'straight') {
+      rot = rot % 180 === 0 ? ((rot + 90) % 360 as TileRotation) : ((rot + 270) % 360 as TileRotation);
+    } else if (t === 'corner') {
+      rot = rot === 90 ? 270 : rot === 270 ? 90 : rot;
+    } else {
+      rot = ((rot + 180) % 360) as TileRotation;
+    }
+    return { ...tile, rotation: rot };
   }
 
   calculateScore(
@@ -174,27 +141,18 @@ class PathFinderService {
     const baseScore = 100;
 
     let timeBonus = 0;
-    if (completionTimeSeconds < 60) {
-      timeBonus = 50;
-    } else if (completionTimeSeconds < timeLimitSeconds) {
-      timeBonus = Math.floor(25 * (timeLimitSeconds - completionTimeSeconds) / timeLimitSeconds);
+    if (completionTimeSeconds < 60) timeBonus = 50;
+    else if (completionTimeSeconds < timeLimitSeconds) {
+      timeBonus = Math.floor((25 * (timeLimitSeconds - completionTimeSeconds)) / timeLimitSeconds);
     }
 
     let movePenalty = 0;
-    if (totalMoves > optimalMoves) {
-      movePenalty = (totalMoves - optimalMoves) * 10;
-    }
+    if (totalMoves > optimalMoves) movePenalty = (totalMoves - optimalMoves) * 10;
 
     const finalScore = Math.max(baseScore + timeBonus - movePenalty, 10);
-    const efficiency = (optimalMoves / totalMoves) * 100;
+    const efficiency = totalMoves > 0 ? (optimalMoves / totalMoves) * 100 : 100;
 
-    return {
-      baseScore,
-      timeBonus,
-      movePenalty,
-      finalScore,
-      efficiency
-    };
+    return { baseScore, timeBonus, movePenalty, finalScore, efficiency };
   }
 
   async createSession(
@@ -218,12 +176,8 @@ class PathFinderService {
       .select()
       .single();
 
-    if (error) {
-      console.error('Error creating PathFinder session:', error);
-      throw error;
-    }
-
-    return data;
+    if (error) throw error;
+    return data as PathFinderSession;
   }
 
   async recordMove(
@@ -247,12 +201,8 @@ class PathFinderService {
       .select()
       .single();
 
-    if (error) {
-      console.error('Error recording move:', error);
-      throw error;
-    }
-
-    return data;
+    if (error) throw error;
+    return data as MoveHistory;
   }
 
   async completeSession(
@@ -276,10 +226,7 @@ class PathFinderService {
       })
       .eq('id', sessionId);
 
-    if (error) {
-      console.error('Error completing session:', error);
-      throw error;
-    }
+    if (error) throw error;
   }
 
   async updateLeaderboard(
@@ -296,11 +243,7 @@ class PathFinderService {
       p_total_moves: totalMoves,
       p_score: score
     });
-
-    if (error) {
-      console.error('Error updating leaderboard:', error);
-      throw error;
-    }
+    if (error) throw error;
   }
 
   async getLeaderboard(
@@ -310,26 +253,15 @@ class PathFinderService {
   ): Promise<PathFinderLeaderboardEntry[]> {
     let query = supabase
       .from('pathfinder_leaderboard')
-      .select(`
-        *,
-        user_profiles!inner(full_name, email)
-      `)
+      .select(`*, user_profiles!inner(full_name, email)`)
       .eq('period', period)
       .order('highest_score', { ascending: false })
       .limit(limit);
 
-    if (levelId) {
-      query = query.eq('level_id', levelId);
-    } else {
-      query = query.is('level_id', null);
-    }
+    query = levelId ? query.eq('level_id', levelId) : query.is('level_id', null);
 
     const { data, error } = await query;
-
-    if (error) {
-      console.error('Error fetching leaderboard:', error);
-      throw error;
-    }
+    if (error) throw error;
 
     return (data || []).map((entry: any, index: number) => ({
       ...entry,
@@ -337,12 +269,6 @@ class PathFinderService {
       user_name: entry.user_profiles?.full_name || 'Anonymous',
       user_email: entry.user_profiles?.email
     }));
-  }
-
-  async getUserRank(userId: string, period: 'daily' | 'weekly' | 'all_time' = 'all_time'): Promise<number | null> {
-    const leaderboard = await this.getLeaderboard(undefined, period, 1000);
-    const userEntry = leaderboard.find(entry => entry.user_id === userId);
-    return userEntry?.rank || null;
   }
 
   async awardXP(
@@ -358,43 +284,8 @@ class PathFinderService {
       p_is_first_completion: isFirstCompletion
     });
 
-    if (error) {
-      console.error('Error awarding XP:', error);
-      throw error;
-    }
-
+    if (error) throw error;
     return data || 0;
-  }
-
-  async getUserSessions(userId: string, limit: number = 10): Promise<PathFinderSession[]> {
-    const { data, error } = await supabase
-      .from('pathfinder_game_sessions')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) {
-      console.error('Error fetching user sessions:', error);
-      throw error;
-    }
-
-    return data || [];
-  }
-
-  async getSessionMoves(sessionId: string): Promise<MoveHistory[]> {
-    const { data, error } = await supabase
-      .from('pathfinder_move_history')
-      .select('*')
-      .eq('session_id', sessionId)
-      .order('move_number', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching session moves:', error);
-      throw error;
-    }
-
-    return data || [];
   }
 }
 
