@@ -2,59 +2,63 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Rocket, Globe } from 'lucide-react';
 import { GridTile } from '../../types/pathfinder';
-import { rotateDirections } from '../../helpers/direction';
 
-interface ArrowTileProps {
+interface Props {
   tile: GridTile;
   onSelect: () => void;
   isDisabled?: boolean;
 }
 
-export const ArrowTile: React.FC<ArrowTileProps> = ({ tile, onSelect, isDisabled = false }) => {
-  const dirs = rotateDirections(tile.pattern.arrow_directions, tile.rotation);
+export const ArrowTile: React.FC<Props> = ({ tile, onSelect, isDisabled=false }) => {
+  const color = tile.isStart ? 'from-green-500 to-green-600'
+    : tile.isEnd ? 'from-red-500 to-red-600'
+    : tile.isSelected ? 'from-yellow-400 to-yellow-500'
+    : tile.isInPath ? 'from-blue-500 to-blue-600'
+    : 'from-slate-600 to-slate-700';
 
-  const renderArrows = () =>
-    dirs.map((d, i) => {
-      const rotate = d === 'up' ? '0deg' : d === 'right' ? '90deg' : d === 'down' ? '180deg' : '270deg';
-      const offset =
-        d === 'up' ? '-translate-y-2' : d === 'down' ? 'translate-y-2' : d === 'left' ? '-translate-x-2' : 'translate-x-2';
-      return (
-        <div key={i} className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" className={`text-white drop-shadow-lg transform ${offset}`} style={{ rotate }}>
-            <path d="M10 0 L15 8 L12 8 L12 12 L8 12 L8 8 L5 8 Z" />
+  const border = tile.isSelected ? 'border-yellow-300'
+    : tile.isInPath ? 'border-blue-300'
+    : 'border-slate-500';
+
+  const renderArrows = () => {
+    const arrows: JSX.Element[] = [];
+    tile.pattern.arrow_directions.forEach((dir, i) => {
+      let rotate = 0, pos = '';
+      if (dir === 'up') { rotate = 0; pos = 'top-1 left-0 right-0'; }
+      if (dir === 'down') { rotate = 180; pos = 'bottom-1 left-0 right-0'; }
+      if (dir === 'left') { rotate = -90; pos = 'left-1 top-0 bottom-0'; }
+      if (dir === 'right') { rotate = 90; pos = 'right-1 top-0 bottom-0'; }
+      arrows.push(
+        <div key={`${dir}-${i}`} className={`absolute ${pos} flex items-center justify-center`}>
+          <svg width="18" height="18" viewBox="0 0 20 20" className="text-white" style={{ transform:`rotate(${rotate}deg)` }}>
+            <path d="M10 1 L17 10 L12.5 10 L12.5 17 L7.5 17 L7.5 10 L3 10 Z" fill="currentColor"/>
           </svg>
         </div>
       );
     });
-
-  const baseTile = 'bg-gradient-to-br from-blue-600 to-blue-700';
-  const inPathTile = 'from-blue-500 to-blue-600';
-  const selectedRing = tile.isSelected ? 'ring-4 ring-yellow-300' : '';
-
-  const colorClass = tile.isStart
-    ? 'from-green-500 to-green-600'
-    : tile.isEnd
-      ? 'from-red-500 to-red-600'
-      : tile.isInPath
-        ? inPathTile
-        : baseTile;
-
-  const clickable = !tile.isStart && !tile.isEnd && !isDisabled;
+    return arrows;
+  };
 
   return (
     <motion.button
       onClick={onSelect}
-      disabled={!clickable}
-      className={`relative aspect-square w-full rounded-md border border-slate-800 bg-gradient-to-br ${colorClass} ${selectedRing} shadow-sm overflow-hidden disabled:cursor-not-allowed ${clickable ? 'hover:scale-[1.03] cursor-pointer' : ''} transition-all duration-150`}
-      whileHover={clickable ? { scale: 1.03 } : {}}
-      whileTap={clickable ? { scale: 0.97 } : {}}
+      disabled={isDisabled || tile.isStart || tile.isEnd}
+      className={`relative aspect-square w-full rounded-lg border-2 ${border}
+                  bg-gradient-to-br ${color} overflow-hidden disabled:opacity-60
+                  ${!tile.isStart && !tile.isEnd && !isDisabled ? 'hover:scale-105 cursor-pointer' : ''} transition-all`}
+      whileTap={!tile.isStart && !tile.isEnd && !isDisabled ? { scale: 0.95 } : {}}
+      animate={{ rotate: tile.rotation }}
+      transition={{ rotate: { type:'spring', stiffness: 300, damping: 30 }}}
     >
       <div className="relative w-full h-full flex items-center justify-center">
-        {tile.isStart ? <Rocket className="w-5 h-5 text-white" /> : tile.isEnd ? <Globe className="w-5 h-5 text-white" /> : renderArrows()}
+        {tile.isStart ? <Rocket className="w-6 h-6 text-white"/> :
+         tile.isEnd ? <Globe className="w-6 h-6 text-white"/> :
+         renderArrows()}
       </div>
-
-      {tile.isInPath && !tile.isStart && !tile.isEnd && (
-        <motion.div className="absolute inset-0 bg-blue-300/10" initial={{ opacity: 0 }} animate={{ opacity: [0, 0.5, 0] }} transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }} />
+      {tile.isInPath && (
+        <motion.div className="absolute inset-0 bg-blue-400/20"
+          initial={{ opacity:0 }} animate={{ opacity:[0,0.5,0] }}
+          transition={{ duration:2, repeat:Infinity, ease:'easeInOut' }}/>
       )}
     </motion.button>
   );
