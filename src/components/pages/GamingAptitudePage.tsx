@@ -5,7 +5,6 @@ import {
   Trophy,
   Star,
   TrendingUp,
-  Lock,
   CheckCircle,
   Gamepad2,
   Zap,
@@ -30,7 +29,7 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [companies, setCompanies] = useState<CompanyWithProgress[]>([]);
+  const [, setCompanies] = useState<CompanyWithProgress[]>([]); // kept for stats load; list not rendered
   const [loading, setLoading] = useState(true);
   const [globalStats, setGlobalStats] = useState({
     totalScore: 0,
@@ -43,7 +42,8 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
     if (isAuthenticated && user) {
       loadCompaniesWithProgress();
     } else {
-      loadCompaniesWithoutProgress();
+      // no company grid to show; just stop loading
+      setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, user]);
@@ -66,33 +66,6 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
     } finally {
       setLoading(false);
     }
-  };
-
-  const loadCompaniesWithoutProgress = async () => {
-    try {
-      setLoading(true);
-      const companiesData = await gamingService.getAllCompanies();
-      const formattedData: CompanyWithProgress[] = companiesData.map(company => ({
-        company,
-        levels: [],
-        totalScore: 0,
-        completedLevels: 0,
-        totalLevels: 4
-      }));
-      setCompanies(formattedData);
-    } catch (err) {
-      console.error('Error loading companies:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCompanyClick = (companyId: string) => {
-    if (!isAuthenticated) {
-      onShowAuth();
-      return;
-    }
-    navigate(`/gaming/${companyId}`);
   };
 
   if (loading) {
@@ -134,7 +107,7 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
           </p>
         </motion.div>
 
-        {/* global stats */}
+        {/* global stats (only when logged in) */}
         {isAuthenticated && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -272,91 +245,6 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
               </div>
             </div>
           </motion.div>
-        </div>
-
-        {/* company cards (NO LOGOS) */}
-        <div className="mb-12">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Company Path Finder Games</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {companies.map((companyData, index) => (
-              <motion.div
-                key={companyData.company.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 * index }}
-                className="group"
-              >
-                <button
-                  onClick={() => handleCompanyClick(companyData.company.id)}
-                  className="relative w-full bg-white dark:bg-dark-100 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 text-left"
-                  style={{ borderTop: `4px solid ${companyData.company.primary_color}` }}
-                >
-                  {/* top-right lock if not authenticated */}
-                  {!isAuthenticated && (
-                    <Lock className="absolute right-4 top-4 w-5 h-5 text-gray-400" />
-                  )}
-
-                  {/* header without logo */}
-                  <h3 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-                    {companyData.company.name}
-                  </h3>
-
-                  {/* description */}
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-3">
-                    {companyData.company.description}
-                  </p>
-
-                  {/* progress / score (auth) or CTA (guest) */}
-                  {isAuthenticated && companyData.levels.length > 0 ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600 dark:text-gray-400">Progress</span>
-                        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                          {companyData.completedLevels} / {companyData.totalLevels}
-                        </span>
-                      </div>
-
-                      <div className="w-full bg-gray-200 dark:bg-dark-200 rounded-full h-2">
-                        <div
-                          className="h-2 rounded-full transition-all duration-300"
-                          style={{
-                            width: `${(companyData.completedLevels / companyData.totalLevels) * 100}%`,
-                            backgroundColor: companyData.company.primary_color
-                          }}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2">
-                        <div className="flex items-center space-x-2">
-                          <Trophy className="w-4 h-4 text-yellow-600" />
-                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                            {companyData.totalScore.toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          {Array.from({ length: 4 }).map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`w-4 h-4 ${
-                                i < companyData.completedLevels
-                                  ? 'text-yellow-500 fill-yellow-500'
-                                  : 'text-gray-300 dark:text-gray-600'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center space-x-2 text-blue-600 dark:text-neon-cyan-400 font-semibold">
-                      <Zap className="w-5 h-5" />
-                      <span>{isAuthenticated ? 'Start Challenge' : 'Login to Play'}</span>
-                    </div>
-                  )}
-                </button>
-              </motion.div>
-            ))}
-          </div>
         </div>
 
         {/* how it works */}
