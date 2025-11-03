@@ -14,8 +14,8 @@ export interface TilePattern {
   id: string;
   pattern_name: string;
   pattern_type: TilePatternType;
-  arrow_directions: ArrowDirection[]; // canonical at rotation 0
-  connection_points: ConnectionPoints; // (optional backup; can mirror arrow_directions)
+  arrow_directions: ArrowDirection[];
+  connection_points: ConnectionPoints;
   difficulty_level: number;
   is_active: boolean;
   created_at: string;
@@ -112,7 +112,6 @@ export interface ScoreCalculation {
   efficiency: number;
 }
 
-// Game level (your existing type)
 export interface GameLevel {
   id: string;
   level_number: number;
