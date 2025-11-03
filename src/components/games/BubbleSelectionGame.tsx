@@ -47,19 +47,27 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
   });
   const [showInstructions, setShowInstructions] = useState(true);
   
-  // Use ref to track timer and prevent multiple timers
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const isProcessingRef = useRef<boolean>(false);
+  const sessionRef = useRef<BubbleSelectionSession | null>(null);
+  const currentQuestionIdRef = useRef<string | null>(null);
 
-  // Timer effect with proper cleanup
+  // Keep refs in sync
   useEffect(() => {
-    // Clear any existing timer
+    sessionRef.current = session;
+  }, [session]);
+
+  useEffect(() => {
+    currentQuestionIdRef.current = currentQuestionId;
+  }, [currentQuestionId]);
+
+  // Timer effect
+  useEffect(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
-    // Start new timer only if playing and time remaining
     if (gameState.status === 'playing' && gameState.timeRemaining > 0 && !gameState.isValidating) {
       timerRef.current = setInterval(() => {
         setGameState(prev => {
@@ -68,19 +76,17 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
           }
           
           if (prev.timeRemaining <= 1) {
-            // Timer expired
             if (!isProcessingRef.current) {
               isProcessingRef.current = true;
-              handleTimeout();
+              setTimeout(() => handleTimeout(), 0);
             }
-            return { ...prev, timeRemaining: 0, status: 'paused' };
+            return { ...prev, timeRemaining: 0 };
           }
           return { ...prev, timeRemaining: prev.timeRemaining - 1 };
         });
       }, 1000);
     }
 
-    // Cleanup function
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -93,6 +99,7 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
     try {
       const newSession = await bubbleSelectionService.createSession(userId);
       setSession(newSession);
+      sessionRef.current = newSession;
       setShowInstructions(false);
       await loadNextQuestion(newSession.id, 1);
     } catch (error) {
@@ -102,16 +109,12 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
 
   const loadNextQuestion = async (sessionId: string, questionNumber: number) => {
     try {
-      // Clear existing timer
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
 
-      // Reset processing flag
       isProcessingRef.current = false;
-
-      // Clear feedback
       setFeedback({ show: false, isCorrect: false, message: '' });
 
       const questionData = await bubbleSelectionService.generateQuestion(
@@ -121,6 +124,7 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
       );
 
       setCurrentQuestionId(questionData.id);
+      currentQuestionIdRef.current = questionData.id;
       setQuestionStartTime(Date.now());
 
       const bubbles: BubbleData[] = questionData.expressions.map((expr, index) => ({
@@ -144,7 +148,6 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
         scoreEarned: 0
       };
 
-      // Reset state completely for new question
       setGameState(prev => ({
         ...prev,
         status: 'playing',
@@ -160,17 +163,13 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
     }
   };
 
-  const handleBubbleClick = useCallback((bubbleIndex: number) => {
+  const handleBubbleClick = (bubbleIndex: number) => {
+    if (gameState.status !== 'playing' || gameState.isValidating) return;
+    if (gameState.selectedBubbles.includes(bubbleIndex)) return;
+
+    const newSelectedBubbles = [...gameState.selectedBubbles, bubbleIndex];
+
     setGameState(prev => {
-      // Prevent clicks during validation or if not playing
-      if (prev.status !== 'playing' || prev.isValidating) return prev;
-
-      // Prevent selecting already selected bubble
-      const alreadySelected = prev.selectedBubbles.includes(bubbleIndex);
-      if (alreadySelected) return prev;
-
-      const newSelectedBubbles = [...prev.selectedBubbles, bubbleIndex];
-
       const updatedQuestion = prev.currentQuestion
         ? {
             ...prev.currentQuestion,
@@ -182,34 +181,35 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
           }
         : null;
 
-      const newState = {
+      return {
         ...prev,
         selectedBubbles: newSelectedBubbles,
         currentQuestion: updatedQuestion
       };
-
-      // Check if all bubbles are selected
-      if (updatedQuestion && newSelectedBubbles.length === updatedQuestion.bubbles.length) {
-        // Trigger validation
-        setTimeout(() => validateAnswer(newSelectedBubbles), 100);
-      }
-
-      return newState;
     });
-  }, []);
+
+    // Check if all bubbles selected
+    if (gameState.currentQuestion && newSelectedBubbles.length === gameState.currentQuestion.bubbles.length) {
+      validateAnswer(newSelectedBubbles);
+    }
+  };
 
   const validateAnswer = async (userSequence: number[]) => {
-    if (!currentQuestionId || !session || isProcessingRef.current) return;
+    const questionId = currentQuestionIdRef.current;
+    const currentSession = sessionRef.current;
+    
+    if (!questionId || !currentSession || isProcessingRef.current) {
+      console.log('Validation blocked:', { questionId, currentSession, isProcessing: isProcessingRef.current });
+      return;
+    }
     
     isProcessingRef.current = true;
 
     setGameState(prev => ({ 
       ...prev, 
-      isValidating: true,
-      status: 'paused'
+      isValidating: true
     }));
 
-    // Clear timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -218,14 +218,14 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
     const timeTaken = (Date.now() - questionStartTime) / 1000;
 
     try {
-      const currentQuestion = gameState.currentQuestion;
-      if (!currentQuestion) return;
-
       const { isCorrect, scoreEarned } = await bubbleSelectionService.submitAnswer(
-        currentQuestionId,
+        questionId,
         userSequence,
         timeTaken
       );
+
+      const currentQuestion = gameState.currentQuestion;
+      if (!currentQuestion) return;
 
       const sortedExpressions = [...currentQuestion.bubbles]
         .sort((a, b) => a.expression.result - b.expression.result);
@@ -251,34 +251,43 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
       }, 2000);
     } catch (error) {
       console.error('Error validating answer:', error);
-      setGameState(prev => ({ ...prev, isValidating: false, status: 'playing' }));
+      setGameState(prev => ({ ...prev, isValidating: false }));
       isProcessingRef.current = false;
     }
   };
 
   const handleTimeout = async () => {
-    if (!currentQuestionId || isProcessingRef.current) return;
+    const questionId = currentQuestionIdRef.current;
+    
+    if (!questionId || isProcessingRef.current) {
+      console.log('Timeout blocked:', { questionId, isProcessing: isProcessingRef.current });
+      return;
+    }
 
     isProcessingRef.current = true;
 
     setGameState(prev => ({ 
       ...prev, 
-      isValidating: true,
-      status: 'paused'
+      isValidating: true
     }));
 
-    // Clear timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
     try {
+      const timeLimit = gameState.currentQuestion?.timeLimit || 14;
       await bubbleSelectionService.submitAnswer(
-        currentQuestionId,
+        questionId,
         gameState.selectedBubbles,
-        gameState.currentQuestion?.timeLimit || 14
+        timeLimit
       );
+
+      setGameState(prev => ({
+        ...prev,
+        streak: 0
+      }));
 
       setFeedback({
         show: true,
@@ -293,37 +302,38 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
     } catch (error) {
       console.error('Error handling timeout:', error);
       isProcessingRef.current = false;
+      setGameState(prev => ({ ...prev, isValidating: false }));
     }
   };
 
   const proceedToNextQuestion = () => {
-    if (!session) return;
+    const currentSession = sessionRef.current;
+    if (!currentSession) return;
 
     const nextQuestionNumber = gameState.questionNumber + 1;
 
     if (nextQuestionNumber > gameState.totalQuestions) {
       completeGame();
     } else {
-      // Small delay before loading next question
       setTimeout(() => {
-        loadNextQuestion(session.id, nextQuestionNumber);
+        loadNextQuestion(currentSession.id, nextQuestionNumber);
       }, 300);
     }
   };
 
   const completeGame = async () => {
-    if (!session) return;
+    const currentSession = sessionRef.current;
+    if (!currentSession) return;
 
-    // Clear timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
     try {
-      await bubbleSelectionService.completeSession(session.id, userId);
+      await bubbleSelectionService.completeSession(currentSession.id, userId);
       setGameState(prev => ({ ...prev, status: 'completed' }));
-      onGameComplete(session.id);
+      onGameComplete(currentSession.id);
     } catch (error) {
       console.error('Error completing game:', error);
     }
@@ -375,7 +385,7 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
                 <li>Calculate each expression mentally</li>
                 <li>Click the bubbles in order from LOWEST to HIGHEST value</li>
                 <li>Complete each question within 14 seconds</li>
-                <li>Answer 24 questions across 14 progressive sections</li>
+                <li>Answer 24 questions across progressive sections</li>
               </ol>
             </div>
 
@@ -394,7 +404,7 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
               </div>
               <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-4">
                 <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Adaptive</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Difficulty adjusts to your performance</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Difficulty adjusts to performance</p>
               </div>
             </div>
           </div>
@@ -484,33 +494,30 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
 
           {gameState.currentQuestion && (
             <div className="flex flex-wrap items-center justify-center gap-6 min-h-[300px]">
-              <AnimatePresence mode="wait">
-                {gameState.currentQuestion.bubbles.map((bubble, index) => (
-                  <motion.button
-                    key={`${gameState.questionNumber}-${bubble.id}`}
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0, opacity: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    whileHover={{ scale: bubble.isSelected ? 1 : 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => handleBubbleClick(bubble.index)}
-                    disabled={bubble.isSelected || gameState.isValidating}
-                    className={`relative w-32 h-32 rounded-full flex items-center justify-center text-2xl font-bold transition-all shadow-lg ${
-                      bubble.isSelected
-                        ? 'bg-gradient-to-br from-blue-400 to-purple-500 text-white cursor-not-allowed'
-                        : 'bg-gradient-to-br from-white to-blue-50 dark:from-dark-200 dark:to-dark-300 text-gray-900 dark:text-gray-100 hover:shadow-xl cursor-pointer border-2 border-blue-200 dark:border-blue-700'
-                    }`}
-                  >
-                    <span>{bubble.expression.expression}</span>
-                    {bubble.isSelected && bubble.selectionOrder && (
-                      <div className="absolute -top-2 -right-2 w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center text-sm font-bold text-gray-900">
-                        {bubble.selectionOrder}
-                      </div>
-                    )}
-                  </motion.button>
-                ))}
-              </AnimatePresence>
+              {gameState.currentQuestion.bubbles.map((bubble, index) => (
+                <motion.button
+                  key={`q${gameState.questionNumber}-${bubble.id}`}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: index * 0.1 }}
+                  whileHover={{ scale: bubble.isSelected ? 1 : 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleBubbleClick(bubble.index)}
+                  disabled={bubble.isSelected || gameState.isValidating}
+                  className={`relative w-32 h-32 rounded-full flex items-center justify-center text-2xl font-bold transition-all shadow-lg ${
+                    bubble.isSelected
+                      ? 'bg-gradient-to-br from-blue-400 to-purple-500 text-white cursor-not-allowed'
+                      : 'bg-gradient-to-br from-white to-blue-50 dark:from-dark-200 dark:to-dark-300 text-gray-900 dark:text-gray-100 hover:shadow-xl cursor-pointer border-2 border-blue-200 dark:border-blue-700'
+                  }`}
+                >
+                  <span>{bubble.expression.expression}</span>
+                  {bubble.isSelected && bubble.selectionOrder && (
+                    <div className="absolute -top-2 -right-2 w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center text-sm font-bold text-gray-900">
+                      {bubble.selectionOrder}
+                    </div>
+                  )}
+                </motion.button>
+              ))}
             </div>
           )}
 
