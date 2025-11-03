@@ -72,7 +72,7 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
     questionStartTimeRef.current = questionStartTime;
   }, [questionStartTime]);
 
-  // Timer effect
+  // Timer effect - FIXED VERSION
   useEffect(() => {
     // Clear any existing timer
     if (timerRef.current) {
@@ -80,23 +80,35 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
       timerRef.current = null;
     }
 
-    if (gameState.status === 'playing' && !gameState.isValidating) {
+    // Only start timer if actively playing and not validating
+    if (gameState.status === 'playing' && !gameState.isValidating && gameState.timeRemaining > 0) {
       timerRef.current = setInterval(() => {
         setGameState(prev => {
-          // Double check we should still be counting
+          // Safety check
           if (prev.isValidating || prev.status !== 'playing') {
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+              timerRef.current = null;
+            }
             return prev;
           }
           
           const newTime = prev.timeRemaining - 1;
           
-          // When timer hits zero, trigger timeout
+          // When timer reaches 0, trigger timeout immediately
           if (newTime <= 0) {
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+              timerRef.current = null;
+            }
+            
+            // Only process if not already processing
             if (!isProcessingRef.current) {
               isProcessingRef.current = true;
-              // Use setTimeout to avoid blocking the state update
-              setTimeout(() => handleTimeout(), 50);
+              // Trigger timeout in next tick
+              Promise.resolve().then(() => handleTimeout());
             }
+            
             return { ...prev, timeRemaining: 0, isValidating: true };
           }
           
@@ -105,13 +117,26 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
       }, 1000);
     }
 
+    // Cleanup on unmount or when dependencies change
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, [gameState.status, gameState.questionNumber, gameState.isValidating]);
+  }, [gameState.status, gameState.isValidating, gameState.questionNumber]);
+
+  // Safety mechanism: Force timeout if timer is stuck at 0
+  useEffect(() => {
+    if (gameState.timeRemaining === 0 && 
+        gameState.status === 'playing' && 
+        !gameState.isValidating && 
+        !isProcessingRef.current) {
+      console.log('Safety timeout trigger activated!');
+      isProcessingRef.current = true;
+      handleTimeout();
+    }
+  }, [gameState.timeRemaining, gameState.status, gameState.isValidating]);
 
   const startGame = async () => {
     try {
@@ -276,6 +301,7 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
 
       setTimeout(() => {
         setFeedback({ show: false, isCorrect: false, message: '' });
+        isProcessingRef.current = false;
         proceedToNextQuestion();
       }, 2500);
     } catch (error) {
@@ -286,19 +312,26 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
   };
 
   const handleTimeout = async () => {
+    console.log('=== TIMEOUT TRIGGERED ===');
+    
     const questionId = currentQuestionIdRef.current;
     const currentSession = sessionRef.current;
     const currentGameState = gameStateRef.current;
     
-    if (!questionId || !currentSession || isProcessingRef.current) {
-      console.log('Timeout blocked:', { questionId, hasSession: !!currentSession, isProcessing: isProcessingRef.current });
+    console.log('Timeout state:', {
+      questionId,
+      hasSession: !!currentSession,
+      isProcessing: isProcessingRef.current,
+      timeRemaining: currentGameState.timeRemaining
+    });
+    
+    if (!questionId || !currentSession) {
+      console.error('Missing questionId or session!');
       isProcessingRef.current = false;
       return;
     }
 
-    console.log('Processing timeout for question:', questionId);
-
-    // Clear timer
+    // Force clear the timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -307,12 +340,16 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
     try {
       const timeLimit = currentGameState.currentQuestion?.timeLimit || 14;
       
+      console.log('Submitting timeout answer...');
+      
       // Submit as incorrect with empty or partial sequence
       await bubbleSelectionService.submitAnswer(
         questionId,
         currentGameState.selectedBubbles,
         timeLimit
       );
+
+      console.log('Timeout answer submitted successfully');
 
       // Get correct answer to show
       const currentQuestion = currentGameState.currentQuestion;
@@ -326,7 +363,8 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
 
       setGameState(prev => ({
         ...prev,
-        streak: 0
+        streak: 0,
+        isValidating: true
       }));
 
       setFeedback({
@@ -335,14 +373,24 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
         message: correctAnswerMessage
       });
 
+      // Move to next question after showing feedback
       setTimeout(() => {
+        console.log('Moving to next question after timeout');
         setFeedback({ show: false, isCorrect: false, message: '' });
+        isProcessingRef.current = false;
         proceedToNextQuestion();
       }, 2500);
+      
     } catch (error) {
       console.error('Error handling timeout:', error);
       isProcessingRef.current = false;
       setGameState(prev => ({ ...prev, isValidating: false }));
+      
+      // Force move to next question even on error
+      setTimeout(() => {
+        console.log('Force moving to next question after error');
+        proceedToNextQuestion();
+      }, 1000);
     }
   };
 
@@ -354,6 +402,8 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
     }
 
     const nextQuestionNumber = gameStateRef.current.questionNumber + 1;
+
+    console.log('Proceeding to question:', nextQuestionNumber);
 
     if (nextQuestionNumber > gameStateRef.current.totalQuestions) {
       completeGame();
