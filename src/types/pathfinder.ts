@@ -1,13 +1,8 @@
-import type { ArrowDirection } from '../helpers/direction';
-
-export type TilePatternType = 'straight' | 'corner' | 't_junction' | 'cross' | 'end';
-export type TileRotation = 0 | 90 | 180 | 270;
+export type ArrowDirection = 'up' | 'down' | 'left' | 'right';
+export type TilePatternType = 'straight' | 'corner' | 't_junction' | 'cross';
 
 export interface ConnectionPoints {
-  left: boolean;
-  right: boolean;
-  top: boolean;
-  bottom: boolean;
+  left: boolean; right: boolean; top: boolean; bottom: boolean;
 }
 
 export interface TilePattern {
@@ -21,9 +16,10 @@ export interface TilePattern {
   created_at: string;
 }
 
+export type TileRotation = 0 | 90 | 180 | 270;
+
 export interface GridTile {
-  row: number;
-  col: number;
+  row: number; col: number;
   pattern: TilePattern;
   rotation: TileRotation;
   isStart?: boolean;
@@ -40,18 +36,29 @@ export interface GridConfig {
   optimalMoves: number;
 }
 
+export interface PathValidationResult {
+  isValid: boolean;
+  pathTiles: { row: number; col: number }[];
+  message?: string;
+}
+
+export interface ScoreCalculation {
+  baseScore: number;
+  timeBonus: number;
+  movePenalty: number;
+  finalScore: number;
+  efficiency: number;
+}
+
 export interface PathFinderSession {
   id: string;
   user_id: string;
   level_id: string;
-  session_token: string;
   grid_config: GridConfig;
-  start_time: string;
-  end_time?: string;
   time_remaining_seconds: number;
-  total_moves: number;
-  rotation_count: number;
-  flip_count: number;
+  total_moves?: number;
+  rotation_count?: number;
+  flip_count?: number;
   is_practice_mode: boolean;
   is_completed: boolean;
   is_valid: boolean;
@@ -67,24 +74,7 @@ export interface MoveHistory {
   action_type: 'rotate' | 'flip';
   previous_rotation: TileRotation;
   new_rotation: TileRotation;
-  timestamp: string;
-}
-
-export interface PathFinderLeaderboardEntry {
-  id: string;
-  user_id: string;
-  level_id?: string;
-  best_time_seconds?: number;
-  fewest_moves?: number;
-  highest_score: number;
-  completion_count: number;
-  efficiency_rating: number;
-  rank?: number;
-  period: 'daily' | 'weekly' | 'all_time';
-  updated_at: string;
-  created_at: string;
-  user_name?: string;
-  user_email?: string;
+  timestamp?: string;
 }
 
 export interface GameState {
@@ -96,25 +86,4 @@ export interface GameState {
   flipCount: number;
   currentScore: number;
   isPathValid: boolean;
-}
-
-export interface PathValidationResult {
-  isValid: boolean;
-  pathTiles: { row: number; col: number }[];
-  message?: string;
-}
-
-export interface ScoreCalculation {
-  baseScore: number;
-  timeBonus: number;
-  movePenalty: number;
-  finalScore: number;
-  efficiency: number;
-}
-
-export interface GameLevel {
-  id: string;
-  level_number: number;
-  grid_size: number;
-  target_score: number;
 }
