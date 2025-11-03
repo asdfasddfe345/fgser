@@ -1,4 +1,3 @@
-// Direction helpers
 export type ArrowDirection = 'up' | 'down' | 'left' | 'right';
 
 export const OPP: Record<ArrowDirection, ArrowDirection> = {
@@ -9,7 +8,7 @@ export const OPP: Record<ArrowDirection, ArrowDirection> = {
 };
 
 export const rotateDir = (d: ArrowDirection, rot: 0 | 90 | 180 | 270): ArrowDirection => {
-  const order: ArrowDirection[] = ['up', 'right', 'down', 'left']; // 90° CW
+  const order: ArrowDirection[] = ['up', 'right', 'down', 'left'];
   const i = order.indexOf(d);
   return order[(i + rot / 90) % 4];
 };
