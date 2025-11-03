@@ -30,6 +30,22 @@ class ExpressionGeneratorService {
     return types[Math.floor(Math.random() * types.length)];
   }
 
+  private generateSquareRoot(config: GeneratorConfig): MathematicalExpression {
+    // Generate perfect squares for clean results
+    const perfectSquares = [4, 9, 16, 25, 36, 49, 64, 81, 100, 121, 144, 169, 196, 225];
+    const base = perfectSquares[Math.floor(Math.random() * perfectSquares.length)];
+    const result = Math.sqrt(base);
+    
+    return {
+      id: this.generateId(),
+      expression: `√${base}`,
+      result,
+      operationType: 'mixed',
+      hasDecimals: false,
+      complexityScore: 6
+    };
+  }
+
   private generateAddition(config: GeneratorConfig): MathematicalExpression {
     const hasDecimals = config.allowDecimals && Math.random() > 0.5;
 
@@ -91,11 +107,11 @@ class ExpressionGeneratorService {
   }
 
   private generateMultiplication(config: GeneratorConfig): MathematicalExpression {
-    const hasDecimals = config.allowDecimals && Math.random() > 0.5;
+    const hasDecimals = config.allowDecimals && Math.random() > 0.6;
 
     if (hasDecimals) {
-      const a = this.getRandomDecimal(2, 5);
-      const b = this.getRandomDecimal(1, 3);
+      const a = this.getRandomDecimal(2, 6, 1);
+      const b = this.getRandomDecimal(1, 4, 1);
       const result = Number((a * b).toFixed(1));
       return {
         id: this.generateId(),
@@ -106,8 +122,8 @@ class ExpressionGeneratorService {
         complexityScore: 7
       };
     } else {
-      const a = this.getRandomInt(2, 10);
-      const b = this.getRandomInt(2, 10);
+      const a = this.getRandomInt(2, 12);
+      const b = this.getRandomInt(2, 12);
       const result = a * b;
       return {
         id: this.generateId(),
@@ -115,7 +131,7 @@ class ExpressionGeneratorService {
         result,
         operationType: 'multiplication',
         hasDecimals: false,
-        complexityScore: 4
+        complexityScore: 5
       };
     }
   }
@@ -124,8 +140,8 @@ class ExpressionGeneratorService {
     const hasDecimals = config.allowDecimals && Math.random() > 0.5;
 
     if (hasDecimals) {
-      const divisor = this.getRandomDecimal(1.5, 3.5);
-      const result = this.getRandomDecimal(1, 5);
+      const divisor = this.getRandomDecimal(1.5, 4.5, 1);
+      const result = this.getRandomDecimal(2, 8, 1);
       const dividend = Number((divisor * result).toFixed(1));
       return {
         id: this.generateId(),
@@ -136,8 +152,8 @@ class ExpressionGeneratorService {
         complexityScore: 8
       };
     } else {
-      const divisor = this.getRandomInt(2, 10);
-      const result = this.getRandomInt(1, 10);
+      const divisor = this.getRandomInt(2, 12);
+      const result = this.getRandomInt(2, 12);
       const dividend = divisor * result;
       return {
         id: this.generateId(),
@@ -145,46 +161,118 @@ class ExpressionGeneratorService {
         result,
         operationType: 'division',
         hasDecimals: false,
-        complexityScore: 5
+        complexityScore: 6
       };
     }
   }
 
   private generateMixed(config: GeneratorConfig): MathematicalExpression {
     const hasDecimals = config.allowDecimals && Math.random() > 0.5;
+    const mixedType = Math.floor(Math.random() * 3);
 
     if (hasDecimals) {
-      const a = this.getRandomDecimal(1, 5);
-      const b = this.getRandomDecimal(1, 3);
-      const c = this.getRandomDecimal(0.5, 2);
-      const intermediate = Number((a + b).toFixed(1));
-      const result = Number((intermediate * c).toFixed(1));
-      return {
-        id: this.generateId(),
-        expression: `(${a}+${b})×${c}`,
-        result,
-        operationType: 'mixed',
-        hasDecimals: true,
-        complexityScore: 9
-      };
+      if (mixedType === 0) {
+        // (a+b)×c
+        const a = this.getRandomDecimal(1, 5, 1);
+        const b = this.getRandomDecimal(1, 3, 1);
+        const c = this.getRandomDecimal(1.5, 3, 1);
+        const intermediate = Number((a + b).toFixed(1));
+        const result = Number((intermediate * c).toFixed(1));
+        return {
+          id: this.generateId(),
+          expression: `(${a}+${b})×${c}`,
+          result,
+          operationType: 'mixed',
+          hasDecimals: true,
+          complexityScore: 9
+        };
+      } else if (mixedType === 1) {
+        // a×b-c
+        const a = this.getRandomDecimal(2, 4, 1);
+        const b = this.getRandomDecimal(2, 4, 1);
+        const product = Number((a * b).toFixed(1));
+        const c = this.getRandomDecimal(1, product - 1, 1);
+        const result = Number((product - c).toFixed(1));
+        return {
+          id: this.generateId(),
+          expression: `${a}×${b}-${c}`,
+          result,
+          operationType: 'mixed',
+          hasDecimals: true,
+          complexityScore: 10
+        };
+      } else {
+        // a÷b+c
+        const b = this.getRandomDecimal(2, 4, 1);
+        const quotient = this.getRandomDecimal(3, 6, 1);
+        const a = Number((b * quotient).toFixed(1));
+        const c = this.getRandomDecimal(1, 5, 1);
+        const result = Number((quotient + c).toFixed(1));
+        return {
+          id: this.generateId(),
+          expression: `${a}÷${b}+${c}`,
+          result,
+          operationType: 'mixed',
+          hasDecimals: true,
+          complexityScore: 11
+        };
+      }
     } else {
-      const a = this.getRandomInt(1, 10);
-      const b = this.getRandomInt(1, 10);
-      const c = this.getRandomInt(2, 5);
-      const intermediate = a + b;
-      const result = intermediate * c;
-      return {
-        id: this.generateId(),
-        expression: `(${a}+${b})×${c}`,
-        result,
-        operationType: 'mixed',
-        hasDecimals: false,
-        complexityScore: 6
-      };
+      if (mixedType === 0) {
+        // (a+b)×c
+        const a = this.getRandomInt(2, 8);
+        const b = this.getRandomInt(2, 8);
+        const c = this.getRandomInt(2, 5);
+        const intermediate = a + b;
+        const result = intermediate * c;
+        return {
+          id: this.generateId(),
+          expression: `(${a}+${b})×${c}`,
+          result,
+          operationType: 'mixed',
+          hasDecimals: false,
+          complexityScore: 7
+        };
+      } else if (mixedType === 1) {
+        // a×b-c
+        const a = this.getRandomInt(3, 8);
+        const b = this.getRandomInt(3, 8);
+        const product = a * b;
+        const c = this.getRandomInt(5, product - 5);
+        const result = product - c;
+        return {
+          id: this.generateId(),
+          expression: `${a}×${b}-${c}`,
+          result,
+          operationType: 'mixed',
+          hasDecimals: false,
+          complexityScore: 8
+        };
+      } else {
+        // a÷b+c
+        const b = this.getRandomInt(3, 6);
+        const quotient = this.getRandomInt(4, 10);
+        const a = b * quotient;
+        const c = this.getRandomInt(2, 8);
+        const result = quotient + c;
+        return {
+          id: this.generateId(),
+          expression: `${a}÷${b}+${c}`,
+          result,
+          operationType: 'mixed',
+          hasDecimals: false,
+          complexityScore: 9
+        };
+      }
     }
   }
 
-  private generateExpression(config: GeneratorConfig): MathematicalExpression {
+  private generateExpression(config: GeneratorConfig, includeSquareRoot: boolean = false): MathematicalExpression {
+    // Add square root option for hard difficulty
+    if (includeSquareRoot && Math.random() > 0.7) {
+      return this.generateSquareRoot(config);
+    }
+
     const operation = this.getRandomOperation(config.operationTypes);
 
     switch (operation) {
@@ -203,25 +291,27 @@ class ExpressionGeneratorService {
     }
   }
 
-  generateExpressions(config: GeneratorConfig): MathematicalExpression[] {
+  generateExpressions(config: GeneratorConfig, includeSquareRoot: boolean = false): MathematicalExpression[] {
     const expressions: MathematicalExpression[] = [];
     const usedResults = new Set<number>();
     let attempts = 0;
-    const maxAttempts = config.count * 20;
+    const maxAttempts = config.count * 30;
 
     while (expressions.length < config.count && attempts < maxAttempts) {
       attempts++;
-      const expr = this.generateExpression(config);
+      const expr = this.generateExpression(config, includeSquareRoot);
 
-      if (!usedResults.has(expr.result)) {
+      // Ensure unique results with some tolerance for decimals
+      const resultKey = Math.round(expr.result * 10);
+      if (!usedResults.has(resultKey)) {
         expressions.push(expr);
-        usedResults.add(expr.result);
+        usedResults.add(resultKey);
       }
     }
 
     if (expressions.length < config.count) {
       while (expressions.length < config.count) {
-        const expr = this.generateExpression(config);
+        const expr = this.generateExpression(config, includeSquareRoot);
         expressions.push(expr);
       }
     }
@@ -233,52 +323,46 @@ class ExpressionGeneratorService {
     questionNumber: number,
     sectionNumber: number,
     difficultyLevel: DifficultyLevel,
-    bubbleCount: number = 4
+    bubbleCount: number = 3
   ): MathematicalExpression[] {
     let config: GeneratorConfig;
+    let includeSquareRoot = false;
 
-    switch (difficultyLevel) {
-      case 'easy':
-        config = {
-          difficultyLevel: 'easy',
-          allowDecimals: false,
-          operationTypes: questionNumber <= 4 ? ['addition'] : ['addition', 'subtraction'],
-          valueRange: { min: 1, max: 10 },
-          count: bubbleCount
-        };
-        break;
-
-      case 'medium':
-        config = {
-          difficultyLevel: 'medium',
-          allowDecimals: questionNumber > 12,
-          operationTypes: ['addition', 'subtraction', 'multiplication'],
-          valueRange: { min: 1, max: 15 },
-          count: bubbleCount
-        };
-        break;
-
-      case 'hard':
-        config = {
-          difficultyLevel: 'hard',
-          allowDecimals: true,
-          operationTypes: ['mixed', 'multiplication', 'division'],
-          valueRange: { min: 1, max: 20 },
-          count: bubbleCount
-        };
-        break;
-
-      default:
-        config = {
-          difficultyLevel: 'easy',
-          allowDecimals: false,
-          operationTypes: ['addition'],
-          valueRange: { min: 1, max: 10 },
-          count: bubbleCount
-        };
+    // Questions 1-8: Easy
+    if (questionNumber <= 8) {
+      config = {
+        difficultyLevel: 'easy',
+        allowDecimals: false,
+        operationTypes: questionNumber <= 4 ? ['addition'] : ['addition', 'subtraction'],
+        valueRange: { min: 1, max: 15 },
+        count: 3
+      };
+    }
+    // Questions 9-16: Medium (add multiplication)
+    else if (questionNumber <= 16) {
+      config = {
+        difficultyLevel: 'medium',
+        allowDecimals: questionNumber > 12,
+        operationTypes: questionNumber <= 12 
+          ? ['addition', 'subtraction', 'multiplication']
+          : ['multiplication', 'division', 'addition'],
+        valueRange: { min: 2, max: 20 },
+        count: 3
+      };
+    }
+    // Questions 17-24: Hard (all operations including square roots)
+    else {
+      config = {
+        difficultyLevel: 'hard',
+        allowDecimals: true,
+        operationTypes: ['mixed', 'multiplication', 'division'],
+        valueRange: { min: 2, max: 25 },
+        count: 3
+      };
+      includeSquareRoot = questionNumber >= 20;
     }
 
-    return this.generateExpressions(config);
+    return this.generateExpressions(config, includeSquareRoot);
   }
 }
 
