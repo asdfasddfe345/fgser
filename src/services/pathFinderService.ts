@@ -1,4 +1,3 @@
-// src/services/pathFinderService.ts
 import { supabase } from '../lib/supabaseClient';
 import {
   GridConfig,
@@ -43,13 +42,7 @@ class PathFinderService {
 
     const optimalMoves = this.calculateOptimalMoves(gridSize, levelNumber);
 
-    return {
-      tiles,
-      gridSize,
-      startPosition,
-      endPosition,
-      optimalMoves
-    };
+    return { tiles, gridSize, startPosition, endPosition, optimalMoves };
   }
 
   private calculateOptimalMoves(gridSize: number, levelNumber: number): number {
