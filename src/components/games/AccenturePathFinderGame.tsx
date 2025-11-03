@@ -1,20 +1,20 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+// src/components/pathfinder/AccenturePathFinderGame.tsx
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, RotateCw, Repeat, CheckCircle, XCircle, Clock, Target, Trophy, Zap } from 'lucide-react';
-import { GameLevel } from '../../types/gaming';
-import { GridConfig, GridTile, GameState, TileRotation } from '../../types/pathfinder';
 import { pathFinderService } from '../../services/pathFinderService';
 import { ArrowTile } from './ArrowTile';
+import type { GameState, GridConfig, GameLevel } from '../../types/pathfinder';
 import { useAuth } from '../../contexts/AuthContext';
 
-interface AccenturePathFinderGameProps {
+interface Props {
   level: GameLevel;
   onGameComplete: (score: number, time: number, moves: number, xpEarned: number) => void;
   onGameExit: () => void;
   isPracticeMode?: boolean;
 }
 
-export const AccenturePathFinderGame: React.FC<AccenturePathFinderGameProps> = ({
+export const AccenturePathFinderGame: React.FC<Props> = ({
   level,
   onGameComplete,
   onGameExit,
@@ -57,257 +57,197 @@ export const AccenturePathFinderGame: React.FC<AccenturePathFinderGameProps> = (
     });
   };
 
+  const startTimer = () => {
+    timerRef.current = setInterval(() => {
+      setGameState(prev => {
+        const t = prev.timeRemaining - 1;
+        if (t <= 0) {
+          handleGameTimeout();
+          return { ...prev, timeRemaining: 0, status: 'failed' };
+        }
+        return { ...prev, timeRemaining: t };
+      });
+    }, 1000);
+  };
+
   const startGame = async () => {
     if (!gridConfig || !user) return;
-
     try {
       const session = await pathFinderService.createSession(user.id, level.id, gridConfig, isPracticeMode);
       setSessionId(session.id);
-      setGameState(prev => ({ ...prev, status: 'playing' }));
-
-      if (!isPracticeMode) {
-        timerRef.current = setInterval(() => {
-          setGameState(prev => {
-            const newTime = prev.timeRemaining - 1;
-            if (newTime <= 0) {
-              handleGameTimeout();
-              return { ...prev, timeRemaining: 0, status: 'failed' };
-            }
-            return { ...prev, timeRemaining: newTime };
-          });
-        }, 1000);
-      }
-    } catch (error) {
-      console.error('Error starting game:', error);
+      setGameState(p => ({ ...p, status: 'playing' }));
+      if (!isPracticeMode) startTimer();
+    } catch (e) {
+      console.error('Error starting game:', e);
     }
   };
 
   const pauseGame = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    setGameState(prev => ({ ...prev, status: 'paused' }));
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+    setGameState(p => ({ ...p, status: 'paused' }));
   };
 
   const resumeGame = () => {
-    setGameState(prev => ({ ...prev, status: 'playing' }));
-    if (!isPracticeMode) {
-      timerRef.current = setInterval(() => {
-        setGameState(prev => {
-          const newTime = prev.timeRemaining - 1;
-          if (newTime <= 0) {
-            handleGameTimeout();
-            return { ...prev, timeRemaining: 0, status: 'failed' };
-          }
-          return { ...prev, timeRemaining: newTime };
-        });
-      }, 1000);
-    }
+    setGameState(p => ({ ...p, status: 'playing' }));
+    if (!isPracticeMode) startTimer();
   };
 
   const handleGameTimeout = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
   };
 
   const resetGame = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
     initializeGame();
   };
 
   const handleTileSelect = (row: number, col: number) => {
     if (gameState.status !== 'playing' || !gridConfig) return;
-
     const tile = gridConfig.tiles[row][col];
     if (tile.isStart || tile.isEnd) return;
 
-    setGameState(prev => ({
-      ...prev,
-      selectedTile: { row, col }
-    }));
+    setGameState(prev => ({ ...prev, selectedTile: { row, col } }));
 
-    const updatedGrid = { ...gridConfig };
-    updatedGrid.tiles = updatedGrid.tiles.map((r, rIdx) =>
-      r.map((t, cIdx) => ({
-        ...t,
-        isSelected: rIdx === row && cIdx === col
-      }))
+    const updated = { ...gridConfig };
+    updated.tiles = updated.tiles.map((r, ri) =>
+      r.map((t, ci) => ({ ...t, isSelected: ri === row && ci === col }))
     );
-    setGridConfig(updatedGrid);
+    setGridConfig(updated);
   };
 
   const handleRotate = async () => {
     if (!gameState.selectedTile || !gridConfig || gameState.status !== 'playing') return;
-
     const { row, col } = gameState.selectedTile;
     const tile = gridConfig.tiles[row][col];
-    const previousRotation = tile.rotation;
-    const rotatedTile = pathFinderService.rotateTile(tile);
+    const previous = tile.rotation;
+    const rotated = pathFinderService.rotateTile(tile);
 
-    const updatedGrid = { ...gridConfig };
-    updatedGrid.tiles[row][col] = rotatedTile;
-    setGridConfig(updatedGrid);
+    const updated = { ...gridConfig };
+    updated.tiles[row][col] = rotated;
+    setGridConfig(updated);
 
-    const newMoveCount = gameState.totalMoves + 1;
-    const newRotationCount = gameState.rotationCount + 1;
-
-    setGameState(prev => ({
-      ...prev,
-      totalMoves: newMoveCount,
-      rotationCount: newRotationCount
-    }));
+    const newMoves = gameState.totalMoves + 1;
+    const newRot = gameState.rotationCount + 1;
+    setGameState(p => ({ ...p, totalMoves: newMoves, rotationCount: newRot }));
 
     if (sessionId && user) {
       try {
-        await pathFinderService.recordMove(
-          sessionId,
-          newMoveCount,
-          { row, col },
-          'rotate',
-          previousRotation,
-          rotatedTile.rotation
-        );
-      } catch (error) {
-        console.error('Error recording move:', error);
+        await pathFinderService.recordMove(sessionId, newMoves, { row, col }, 'rotate', previous, rotated.rotation);
+      } catch (e) {
+        console.error('recordMove error:', e);
       }
     }
-
-    checkPath(updatedGrid);
+    checkPath(updated);
   };
 
   const handleFlip = async () => {
     if (!gameState.selectedTile || !gridConfig || gameState.status !== 'playing') return;
-
     const { row, col } = gameState.selectedTile;
     const tile = gridConfig.tiles[row][col];
-    const previousRotation = tile.rotation;
-    const flippedTile = pathFinderService.flipTile(tile);
+    const previous = tile.rotation;
+    const flipped = pathFinderService.flipTile(tile);
 
-    const updatedGrid = { ...gridConfig };
-    updatedGrid.tiles[row][col] = flippedTile;
-    setGridConfig(updatedGrid);
+    const updated = { ...gridConfig };
+    updated.tiles[row][col] = flipped;
+    setGridConfig(updated);
 
-    const newMoveCount = gameState.totalMoves + 1;
-    const newFlipCount = gameState.flipCount + 1;
-
-    setGameState(prev => ({
-      ...prev,
-      totalMoves: newMoveCount,
-      flipCount: newFlipCount
-    }));
+    const newMoves = gameState.totalMoves + 1;
+    const newFlip = gameState.flipCount + 1;
+    setGameState(p => ({ ...p, totalMoves: newMoves, flipCount: newFlip }));
 
     if (sessionId && user) {
       try {
-        await pathFinderService.recordMove(
-          sessionId,
-          newMoveCount,
-          { row, col },
-          'flip',
-          previousRotation,
-          flippedTile.rotation
-        );
-      } catch (error) {
-        console.error('Error recording move:', error);
+        await pathFinderService.recordMove(sessionId, newMoves, { row, col }, 'flip', previous, flipped.rotation);
+      } catch (e) {
+        console.error('recordMove error:', e);
       }
     }
-
-    checkPath(updatedGrid);
+    checkPath(updated);
   };
 
   const checkPath = (grid: GridConfig) => {
     const validation = pathFinderService.validatePath(grid);
-
-    const updatedGrid = { ...grid };
-    updatedGrid.tiles = updatedGrid.tiles.map(row =>
-      row.map(tile => ({
-        ...tile,
-        isInPath: validation.pathTiles.some(p => p.row === tile.row && p.col === tile.col)
+    const updated = { ...grid };
+    updated.tiles = updated.tiles.map(row =>
+      row.map(t => ({
+        ...t,
+        isInPath: validation.pathTiles.some(p => p.row === t.row && p.col === t.col)
       }))
     );
-    setGridConfig(updatedGrid);
+    setGridConfig(updated);
 
-    if (validation.isValid) {
-      completeGame();
-    }
-
-    setGameState(prev => ({
-      ...prev,
-      isPathValid: validation.isValid
-    }));
+    if (validation.isValid) completeGame();
+    setGameState(p => ({ ...p, isPathValid: validation.isValid }));
   };
 
   const completeGame = async () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
     if (!gridConfig || !user) return;
 
     const completionTime = 240 - gameState.timeRemaining;
-    const scoreCalc = pathFinderService.calculateScore(
+    const score = pathFinderService.calculateScore(
       completionTime,
       240,
       gameState.totalMoves,
       gridConfig.optimalMoves
     );
 
-    setGameState(prev => ({
-      ...prev,
-      status: 'completed',
-      currentScore: scoreCalc.finalScore
-    }));
+    setGameState(p => ({ ...p, status: 'completed', currentScore: score.finalScore }));
 
     if (!isPracticeMode && sessionId) {
       try {
         await pathFinderService.completeSession(
           sessionId,
-          scoreCalc.finalScore,
+          score.finalScore,
           gameState.totalMoves,
           gameState.rotationCount,
           gameState.flipCount,
           gameState.timeRemaining
         );
-
         await pathFinderService.updateLeaderboard(
           user.id,
           level.id,
           completionTime,
           gameState.totalMoves,
-          scoreCalc.finalScore
+          score.finalScore
         );
-
-        const xpEarned = await pathFinderService.awardXP(
-          user.id,
-          sessionId,
-          scoreCalc.finalScore,
-          false
-        );
-
-        onGameComplete(scoreCalc.finalScore, completionTime, gameState.totalMoves, xpEarned);
-      } catch (error) {
-        console.error('Error completing game:', error);
+        const xp = await pathFinderService.awardXP(user.id, sessionId, score.finalScore, false);
+        onGameComplete(score.finalScore, completionTime, gameState.totalMoves, xp);
+      } catch (e) {
+        console.error('completeGame error:', e);
       }
     }
   };
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (gameState.status !== 'playing' || !gridConfig) return;
+      const cur = gameState.selectedTile ?? gridConfig.startPosition;
+      const clamp = (v: number) => Math.max(0, Math.min(v, gridConfig.gridSize - 1));
+      let { row, col } = cur;
+      if (e.key === 'ArrowUp') row = clamp(row - 1);
+      if (e.key === 'ArrowDown') row = clamp(row + 1);
+      if (e.key === 'ArrowLeft') col = clamp(col - 1);
+      if (e.key === 'ArrowRight') col = clamp(col + 1);
+      if (row !== cur.row || col !== cur.col) handleTileSelect(row, col);
+      if (e.key.toLowerCase() === 'r') handleRotate();
+      if (e.key.toLowerCase() === 'f') handleFlip();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [gameState.status, gameState.selectedTile, gridConfig]);
+
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   if (!gridConfig) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-cyan-900">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400 mx-auto mb-4" />
           <p className="text-gray-200">Generating puzzle...</p>
         </div>
       </div>
@@ -319,10 +259,10 @@ export const AccenturePathFinderGame: React.FC<AccenturePathFinderGameProps> = (
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white font-['Orbitron']">
-              Accenture Path Finder
-            </h1>
-            <p className="text-gray-300 mt-1">Level {level.level_number} - {level.grid_size}x{level.grid_size} Grid</p>
+            <h1 className="text-3xl md:text-4xl font-bold text-white font-['Orbitron']">Accenture Path Finder</h1>
+            <p className="text-gray-300 mt-1">
+              Level {level.level_number} - {level.grid_size}x{level.grid_size} Grid
+            </p>
             {isPracticeMode && <p className="text-yellow-300 text-sm">Practice Mode - Unlimited Time</p>}
           </div>
           <button
@@ -375,9 +315,7 @@ export const AccenturePathFinderGame: React.FC<AccenturePathFinderGameProps> = (
               <Zap className="w-6 h-6 text-purple-400" />
               <div>
                 <p className="text-sm text-gray-400">Actions</p>
-                <p className="text-2xl font-bold text-white">
-                  R:{gameState.rotationCount} F:{gameState.flipCount}
-                </p>
+                <p className="text-2xl font-bold text-white">R:{gameState.rotationCount} F:{gameState.flipCount}</p>
               </div>
             </div>
           </div>
@@ -448,12 +386,12 @@ export const AccenturePathFinderGame: React.FC<AccenturePathFinderGameProps> = (
                 width: '100%'
               }}
             >
-              {gridConfig.tiles.map((row, rowIdx) =>
-                row.map((tile, colIdx) => (
+              {gridConfig.tiles.map((row, r) =>
+                row.map((tile, c) => (
                   <ArrowTile
-                    key={`${rowIdx}-${colIdx}`}
+                    key={`${r}-${c}`}
                     tile={tile}
-                    onSelect={() => handleTileSelect(rowIdx, colIdx)}
+                    onSelect={() => handleTileSelect(r, c)}
                     isDisabled={gameState.status !== 'playing'}
                   />
                 ))
@@ -479,17 +417,11 @@ export const AccenturePathFinderGame: React.FC<AccenturePathFinderGameProps> = (
               className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
             >
               <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-8 max-w-md w-full text-center border-2 border-cyan-500 shadow-neon-cyan">
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ delay: 0.2, type: 'spring' }}
-                >
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.2, type: 'spring' }}>
                   <CheckCircle className="w-20 h-20 text-green-400 mx-auto mb-4" />
                 </motion.div>
                 <h2 className="text-3xl font-bold text-white mb-2">Level Complete!</h2>
-                <p className="text-gray-300 mb-6">
-                  Well Done! Path Complete in {gameState.totalMoves} moves!
-                </p>
+                <p className="text-gray-300 mb-6">Well Done! Path Complete in {gameState.totalMoves} moves!</p>
                 <div className="space-y-2 mb-6">
                   <p className="text-lg text-gray-300">
                     <span className="text-cyan-400">Score: </span>
@@ -498,7 +430,11 @@ export const AccenturePathFinderGame: React.FC<AccenturePathFinderGameProps> = (
                   {!isPracticeMode && (
                     <p className="text-lg text-gray-300">
                       <span className="text-cyan-400">Time: </span>
-                      <span className="font-bold text-white">{formatTime(240 - gameState.timeRemaining)}</span>
+                      <span className="font-bold text-white">
+                        {`${Math.floor((240 - gameState.timeRemaining) / 60)}:${String(
+                          (240 - gameState.timeRemaining) % 60
+                        ).padStart(2, '0')}`}
+                      </span>
                     </p>
                   )}
                   <p className="text-lg text-gray-300">
@@ -526,9 +462,7 @@ export const AccenturePathFinderGame: React.FC<AccenturePathFinderGameProps> = (
               <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-8 max-w-md w-full text-center border-2 border-red-500">
                 <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
                 <h2 className="text-3xl font-bold text-white mb-2">Time's Up!</h2>
-                <p className="text-gray-300 mb-6">
-                  You ran out of time. Try again to improve your speed!
-                </p>
+                <p className="text-gray-300 mb-6">You ran out of time. Try again to improve your speed!</p>
                 <div className="flex space-x-4">
                   <button
                     onClick={resetGame}
