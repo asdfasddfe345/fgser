@@ -25,10 +25,9 @@ const arrowForDelta = (dx: number, dy: number) => {
   return '';
 };
 
-// CORRECTED: Match the UI descriptions and service defaults
-const GRID_MAP = { easy: 3, medium: 4, hard: 5 } as const;
-const TIME_MAP = { easy: 360, medium: 300, hard: 240 } as const; // 6min, 5min, 4min
-const DENSITY_MAP = { easy: 0.20, medium: 0.28, hard: 0.33 } as const;
+const GRID_MAP = { easy: 4, medium: 5, hard: 6 } as const;
+const TIME_MAP = { easy: 300, medium: 300, hard: 300 } as const;
+const DENSITY_MAP = { easy: 0.18, medium: 0.22, hard: 0.26 } as const;
 
 export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   difficulty,
@@ -69,7 +68,8 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   const [over, setOver] = useState(false);
   const [trail, setTrail] = useState<Set<string>>(new Set(['0,0']));
   const [flashEdge, setFlashEdge] = useState<null | { x: number; y: number; dir: Dir }>(null);
-  const [showHowTo, setShowHowTo] = useState(true);
+  const [doorFlash, setDoorFlash] = useState<null | { x: number; y: number }>(null); // NEW: door feedback
+  const [showHowTo, setShowHowTo] = useState(true); // show instructions at start
   const flashTO = useRef<number | null>(null);
 
   useEffect(() => { init(); }, [difficulty]);
@@ -119,6 +119,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
     setOver(false);
     setTrail(new Set(['0,0']));
     setFlashEdge(null);
+    setDoorFlash(null);
   };
 
   const inBounds = (p: Pos) => p.x >= 0 && p.x < gridSize && p.y >= 0 && p.y < gridSize;
@@ -129,13 +130,20 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
     const target = { x: player.x + dx, y: player.y + dy };
     if (!inBounds(target)) return;
 
+    // Block the door unless the player has the key
+    if (!hasKey && target.x === exitPos.x && target.y === exitPos.y) {
+      setDoorFlash({ x: exitPos.x, y: exitPos.y });
+      window.setTimeout(() => setDoorFlash(null), 250);
+      return; // no move, no penalty
+    }
+
+    // Wall collision: flash edge, reset to start, drop key
     if (isWall(target)) {
       const dir: Dir = dx === 1 ? 'r' : dx === -1 ? 'l' : dy === 1 ? 'd' : 'u';
       setFlashEdge({ x: player.x, y: player.y, dir });
       if (flashTO.current) window.clearTimeout(flashTO.current);
       flashTO.current = window.setTimeout(() => setFlashEdge(null), 220);
 
-      // collision → reset to start + drop key and re-show at original location
       setPlayer({ x: 0, y: 0 });
       setHasKey(false);
       setMoves(m => m + 1);
@@ -143,11 +151,15 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
       return;
     }
 
+    // Move
     setPlayer(target);
     setMoves(m => m + 1);
     setTrail(prev => new Set([...prev, `${target.x},${target.y}`]));
 
+    // Pick key
     if (!hasKey && target.x === keyPos.x && target.y === keyPos.y) setHasKey(true);
+
+    // Finish if on door with key
     if (hasKey && target.x === exitPos.x && target.y === exitPos.y) onComplete();
   }, [player, hasKey, over, started, walls, keyPos, exitPos]);
 
@@ -256,6 +268,8 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                       </div>
                     </div>
                   )}
+
+                  {/* Flash current cell edge on hitting a wall */}
                   {flashEdge && isPlayer && (
                     <div className="absolute inset-0">
                       {flashEdge.dir === 'u' && <div className="absolute top-0 left-0 right-0 h-1.5 bg-red-500" />}
@@ -264,6 +278,8 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                       {flashEdge.dir === 'r' && <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-red-500" />}
                     </div>
                   )}
+
+                  {/* Player */}
                   {isPlayer && (
                     <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }}
                       className="w-full h-full flex items-center justify-center relative z-10">
@@ -272,16 +288,31 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                       </div>
                     </motion.div>
                   )}
+
+                  {/* Key */}
                   {showKey && !isPlayer && (
                     <div className="w-full h-full flex items-center justify-center">
                       <span className="text-2xl select-none">🔑</span>
                     </div>
                   )}
+
+                  {/* Door / Locked Door with flash */}
                   {showExit && !isPlayer && (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <span className="text-2xl select-none">🏠</span>
+                    <div className="w-full h-full flex items-center justify-center relative">
+                      {hasKey ? (
+                        <span className="text-2xl select-none">🏠</span>
+                      ) : (
+                        <>
+                          <span className="text-2xl select-none">🔒</span>
+                          {doorFlash && doorFlash.x === x && doorFlash.y === y && (
+                            <div className="absolute inset-0 ring-4 ring-red-500/70 animate-pulse pointer-events-none rounded-none" />
+                          )}
+                        </>
+                      )}
                     </div>
                   )}
+
+                  {/* Walls are invisible (classic cognitive rules) */}
                   {blocked && null}
                 </div>
               );
@@ -326,7 +357,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
                 <li>Tap / click an adjacent tile (↑ ↓ ← →) to move the player.</li>
                 <li>Collect exactly <span className="text-yellow-400 font-semibold">one 🔑 key</span>.</li>
                 <li>After collecting the key, reach the <span className="text-green-400 font-semibold">🏠 door</span>.</li>
-                <li>Hidden walls will reset you to the start and the key will reappear at its original position.</li>
+                <li>Hidden walls reset you to the start and the key reappears at its original position.</li>
                 <li>Finish before the clock hits 0 to maximize your score.</li>
               </ol>
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -375,7 +406,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
               <p className="text-slate-300 leading-6">
                 For the intended practice experience, please open this game on a
                 <span className="font-semibold text-white"> desktop or laptop</span>. On phone, enable
-                <span className="font-semibold"> "Desktop site"</span> and zoom out a bit.
+                <span className="font-semibold"> “Desktop site”</span> and zoom out a bit.
               </p>
               <div className="mt-4 text-sm text-slate-300 space-y-2">
                 <p className="font-semibold">Quick tips:</p>
