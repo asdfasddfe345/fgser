@@ -25,10 +25,9 @@ const arrowForDelta = (dx: number, dy: number) => {
   return '';
 };
 
-// CORRECTED: Match the UI descriptions and service defaults
-const GRID_MAP = { easy: 8, medium: 10, hard: 12 } as const;
-const TIME_MAP = { easy: 360, medium: 300, hard: 240 } as const; // 6min, 5min, 4min
-const DENSITY_MAP = { easy: 0.20, medium: 0.28, hard: 0.33 } as const;
+const GRID_MAP = { easy: 4, medium: 5, hard: 6 } as const;
+const TIME_MAP = { easy: 300, medium: 300, hard: 300 } as const;
+const DENSITY_MAP = { easy: 0.18, medium: 0.22, hard: 0.26 } as const;
 
 export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   difficulty,
@@ -69,7 +68,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
   const [over, setOver] = useState(false);
   const [trail, setTrail] = useState<Set<string>>(new Set(['0,0']));
   const [flashEdge, setFlashEdge] = useState<null | { x: number; y: number; dir: Dir }>(null);
-  const [showHowTo, setShowHowTo] = useState(true);
+  const [showHowTo, setShowHowTo] = useState(true); // ← show instructions at start
   const flashTO = useRef<number | null>(null);
 
   useEffect(() => { init(); }, [difficulty]);
@@ -375,7 +374,7 @@ export const KeyFinderGame: React.FC<KeyFinderGameProps> = ({
               <p className="text-slate-300 leading-6">
                 For the intended practice experience, please open this game on a
                 <span className="font-semibold text-white"> desktop or laptop</span>. On phone, enable
-                <span className="font-semibold"> "Desktop site"</span> and zoom out a bit.
+                <span className="font-semibold"> “Desktop site”</span> and zoom out a bit.
               </p>
               <div className="mt-4 text-sm text-slate-300 space-y-2">
                 <p className="font-semibold">Quick tips:</p>
