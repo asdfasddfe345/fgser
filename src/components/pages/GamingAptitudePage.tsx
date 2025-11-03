@@ -29,6 +29,7 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
 }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
+
   const [companies, setCompanies] = useState<CompanyWithProgress[]>([]);
   const [loading, setLoading] = useState(true);
   const [globalStats, setGlobalStats] = useState({
@@ -44,11 +45,11 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
     } else {
       loadCompaniesWithoutProgress();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, user]);
 
   const loadCompaniesWithProgress = async () => {
     if (!user) return;
-
     try {
       setLoading(true);
       const companiesData = await gamingService.getAllCompaniesWithProgress(user.id);
@@ -60,8 +61,8 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
       const rank = await gamingService.getUserRank(user.id);
 
       setGlobalStats({ totalScore, completedLevels, totalLevels, rank });
-    } catch (error) {
-      console.error('Error loading companies with progress:', error);
+    } catch (err) {
+      console.error('Error loading companies with progress:', err);
     } finally {
       setLoading(false);
     }
@@ -79,8 +80,8 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
         totalLevels: 4
       }));
       setCompanies(formattedData);
-    } catch (error) {
-      console.error('Error loading companies:', error);
+    } catch (err) {
+      console.error('Error loading companies:', err);
     } finally {
       setLoading(false);
     }
@@ -107,12 +108,14 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-dark-50 dark:via-dark-100 dark:to-dark-200">
+      {/* soft blobs */}
       <div className="relative overflow-hidden">
         <div className="absolute top-1/4 left-1/4 w-48 h-48 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob dark:bg-neon-purple-500"></div>
         <div className="absolute bottom-1/3 right-1/4 w-64 h-64 bg-blue-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000 dark:bg-neon-blue-500"></div>
       </div>
 
       <div className="relative container-responsive py-12">
+        {/* header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -131,6 +134,7 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
           </p>
         </motion.div>
 
+        {/* global stats */}
         {isAuthenticated && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -182,6 +186,7 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
           </motion.div>
         )}
 
+        {/* spotlight tiles */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -216,11 +221,8 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
                 </div>
                 <button
                   onClick={() => {
-                    if (!isAuthenticated) {
-                      onShowAuth();
-                    } else {
-                      navigate('/bubble-selection');
-                    }
+                    if (!isAuthenticated) onShowAuth();
+                    else navigate('/bubble-selection');
                   }}
                   className="mt-6 w-full px-8 py-4 bg-white text-orange-600 rounded-xl font-bold hover:bg-orange-50 transition-colors shadow-lg hover:shadow-xl transform hover:scale-105"
                 >
@@ -272,6 +274,7 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
           </motion.div>
         </div>
 
+        {/* company cards (NO LOGOS) */}
         <div className="mb-12">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Company Path Finder Games</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -285,31 +288,25 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
               >
                 <button
                   onClick={() => handleCompanyClick(companyData.company.id)}
-                  className="w-full bg-white dark:bg-dark-100 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 text-left"
-                  style={{
-                    borderTop: `4px solid ${companyData.company.primary_color}`
-                  }}
+                  className="relative w-full bg-white dark:bg-dark-100 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 text-left"
+                  style={{ borderTop: `4px solid ${companyData.company.primary_color}` }}
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-16 h-16 bg-white rounded-lg shadow-md flex items-center justify-center p-2">
-                      <img
-                        src={companyData.company.logo_url}
-                        alt={companyData.company.name}
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
-                    {!isAuthenticated && (
-                      <Lock className="w-6 h-6 text-gray-400" />
-                    )}
-                  </div>
+                  {/* top-right lock if not authenticated */}
+                  {!isAuthenticated && (
+                    <Lock className="absolute right-4 top-4 w-5 h-5 text-gray-400" />
+                  )}
 
+                  {/* header without logo */}
                   <h3 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
                     {companyData.company.name}
                   </h3>
+
+                  {/* description */}
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-3">
                     {companyData.company.description}
                   </p>
 
+                  {/* progress / score (auth) or CTA (guest) */}
                   {isAuthenticated && companyData.levels.length > 0 ? (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
@@ -318,6 +315,7 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
                           {companyData.completedLevels} / {companyData.totalLevels}
                         </span>
                       </div>
+
                       <div className="w-full bg-gray-200 dark:bg-dark-200 rounded-full h-2">
                         <div
                           className="h-2 rounded-full transition-all duration-300"
@@ -327,6 +325,7 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
                           }}
                         />
                       </div>
+
                       <div className="flex items-center justify-between pt-2">
                         <div className="flex items-center space-x-2">
                           <Trophy className="w-4 h-4 text-yellow-600" />
@@ -360,6 +359,7 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
           </div>
         </div>
 
+        {/* how it works */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -406,6 +406,7 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
           </div>
         </motion.div>
 
+        {/* auth CTA */}
         {!isAuthenticated && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
