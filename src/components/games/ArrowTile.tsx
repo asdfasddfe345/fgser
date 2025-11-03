@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { GridTile } from '../../types/pathfinder';
 import { Rocket, Globe } from 'lucide-react';
+import { GridTile } from '../../types/pathfinder';
+import { rotateDirections } from '../../helpers/direction';
 
 interface ArrowTileProps {
   tile: GridTile;
@@ -11,52 +12,30 @@ interface ArrowTileProps {
 
 export const ArrowTile: React.FC<ArrowTileProps> = ({ tile, onSelect, isDisabled = false }) => {
   const renderArrows = () => {
-    const { arrow_directions } = tile.pattern;
-    const arrows: JSX.Element[] = [];
-
-    arrow_directions.forEach((direction, index) => {
-      let transform = '';
-      let position = '';
-
-      switch (direction) {
-        case 'up':
-          transform = 'rotate(0deg)';
-          position = 'top-1';
-          break;
-        case 'down':
-          transform = 'rotate(180deg)';
-          position = 'bottom-1';
-          break;
-        case 'left':
-          transform = 'rotate(-90deg)';
-          position = 'left-1';
-          break;
-        case 'right':
-          transform = 'rotate(90deg)';
-          position = 'right-1';
-          break;
-      }
-
-      arrows.push(
-        <div
-          key={`${direction}-${index}`}
-          className={`absolute ${position} inset-x-0 flex justify-center items-center`}
-          style={{ transform }}
-        >
+    const dirs = rotateDirections(tile.pattern.arrow_directions, tile.rotation);
+    return dirs.map((d, i) => {
+      const pos: Record<string, string> = {
+        up: '-translate-y-2',
+        down: 'translate-y-2',
+        left: '-translate-x-2',
+        right: 'translate-x-2',
+      };
+      const deg: Record<string, string> = { up: '0deg', right: '90deg', down: '180deg', left: '270deg' };
+      return (
+        <div key={i} className="absolute inset-0 flex items-center justify-center">
           <svg
-            width="20"
-            height="20"
+            width="18"
+            height="18"
             viewBox="0 0 20 20"
             fill="currentColor"
-            className="text-white drop-shadow-lg"
+            className={`text-white drop-shadow-lg transform ${pos[d]}`}
+            style={{ rotate: deg[d] }}
           >
             <path d="M10 0 L15 8 L12 8 L12 12 L8 12 L8 8 L5 8 Z" />
           </svg>
         </div>
       );
     });
-
-    return arrows;
   };
 
   const getTileColor = () => {
@@ -73,31 +52,21 @@ export const ArrowTile: React.FC<ArrowTileProps> = ({ tile, onSelect, isDisabled
     return 'border-gray-500';
   };
 
+  const clickable = !tile.isStart && !tile.isEnd && !isDisabled;
+
   return (
     <motion.button
       onClick={onSelect}
-      disabled={isDisabled || tile.isStart || tile.isEnd}
+      disabled={!clickable}
       className={`
         relative aspect-square w-full rounded-lg border-2 ${getBorderColor()}
         bg-gradient-to-br ${getTileColor()}
-        overflow-hidden
-        disabled:cursor-not-allowed
-        ${!tile.isStart && !tile.isEnd && !isDisabled ? 'hover:scale-105 hover:shadow-neon-cyan cursor-pointer' : ''}
-        transition-all duration-200
-        flex items-center justify-center
+        overflow-hidden disabled:cursor-not-allowed
+        ${clickable ? 'hover:scale-105 hover:shadow-neon-cyan cursor-pointer' : ''}
+        transition-all duration-200 flex items-center justify-center
       `}
-      whileHover={!tile.isStart && !tile.isEnd && !isDisabled ? { scale: 1.05 } : {}}
-      whileTap={!tile.isStart && !tile.isEnd && !isDisabled ? { scale: 0.95 } : {}}
-      animate={{
-        rotate: tile.rotation
-      }}
-      transition={{
-        rotate: {
-          type: 'spring',
-          stiffness: 300,
-          damping: 30
-        }
-      }}
+      whileHover={clickable ? { scale: 1.05 } : {}}
+      whileTap={clickable ? { scale: 0.95 } : {}}
     >
       <div className="relative w-full h-full flex items-center justify-center">
         {tile.isStart ? (
@@ -110,14 +79,8 @@ export const ArrowTile: React.FC<ArrowTileProps> = ({ tile, onSelect, isDisabled
             {tile.isSelected && (
               <motion.div
                 className="absolute inset-0 border-4 border-yellow-300 rounded-lg"
-                animate={{
-                  opacity: [0.5, 1, 0.5],
-                }}
-                transition={{
-                  duration: 1.5,
-                  repeat: Infinity,
-                  ease: 'easeInOut'
-                }}
+                animate={{ opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
               />
             )}
           </>
@@ -129,11 +92,7 @@ export const ArrowTile: React.FC<ArrowTileProps> = ({ tile, onSelect, isDisabled
           className="absolute inset-0 bg-blue-400/20"
           initial={{ opacity: 0 }}
           animate={{ opacity: [0, 0.5, 0] }}
-          transition={{
-            duration: 2,
-            repeat: Infinity,
-            ease: 'easeInOut'
-          }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
         />
       )}
     </motion.button>
