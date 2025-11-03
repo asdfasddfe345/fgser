@@ -114,14 +114,11 @@ export const TILE_PATTERNS: TilePattern[] = [
 ];
 
 export function getTilePatternsByDifficulty(maxDifficulty: number): TilePattern[] {
-  return TILE_PATTERNS.filter(pattern => pattern.difficulty_level <= maxDifficulty && pattern.is_active);
-}
-
-export function getTilePatternById(id: string): TilePattern | undefined {
-  return TILE_PATTERNS.find(pattern => pattern.id === id);
+  return TILE_PATTERNS.filter(p => p.difficulty_level <= maxDifficulty && p.is_active);
 }
 
 export function getRandomTilePattern(maxDifficulty: number): TilePattern {
-  const availablePatterns = getTilePatternsByDifficulty(maxDifficulty);
-  return availablePatterns[Math.floor(Math.random() * availablePatterns.length)];
+  const available = getTilePatternsByDifficulty(maxDifficulty);
+  const pool = available.length ? available : TILE_PATTERNS;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
