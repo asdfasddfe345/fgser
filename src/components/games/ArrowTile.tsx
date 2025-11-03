@@ -1,3 +1,4 @@
+// src/components/pathfinder/ArrowTile.tsx
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Rocket, Globe } from 'lucide-react';
@@ -18,7 +19,7 @@ export const ArrowTile: React.FC<ArrowTileProps> = ({ tile, onSelect, isDisabled
         up: '-translate-y-2',
         down: 'translate-y-2',
         left: '-translate-x-2',
-        right: 'translate-x-2',
+        right: 'translate-x-2'
       };
       const deg: Record<string, string> = { up: '0deg', right: '90deg', down: '180deg', left: '270deg' };
       return (
