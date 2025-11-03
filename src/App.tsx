@@ -56,6 +56,7 @@ import { CompanyGamePage } from './components/pages/CompanyGamePage';
 import { AccenturePathFinderPage } from './components/pages/AccenturePathFinderPage';
 import { CognitivePathFinderPage } from './components/pages/CognitivePathFinderPage';
 import { KeyFinderPage } from './components/pages/KeyFinderPage';
+import { BubbleSelectionPage } from './components/pages/BubbleSelectionPage';
 
 
 function App() {
@@ -483,6 +484,7 @@ const handleDiwaliCTAClick = useCallback(() => {
           <Route path="/pathfinder" element={<AccenturePathFinderPage />} />
           <Route path="/cognitive-pathfinder" element={<CognitivePathFinderPage />} />
           <Route path="/key-finder" element={<KeyFinderPage />} />
+          <Route path="/bubble-selection" element={<BubbleSelectionPage />} />
           <Route
             path="/admin/jobs"
             element={

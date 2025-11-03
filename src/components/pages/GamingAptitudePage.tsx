@@ -182,47 +182,95 @@ export const GamingAptitudePage: React.FC<GamingAptitudePageProps> = ({
           </motion.div>
         )}
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="mb-12"
-        >
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-700 dark:to-purple-700 rounded-2xl p-8 text-white shadow-xl">
-            <div className="flex flex-col md:flex-row items-center justify-between">
-              <div className="mb-6 md:mb-0 md:mr-6">
-                <div className="flex items-center space-x-3 mb-3">
-                  <Brain className="w-10 h-10" />
-                  <Key className="w-8 h-8" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+          >
+            <div className="bg-gradient-to-r from-orange-500 to-pink-600 dark:from-orange-600 dark:to-pink-700 rounded-2xl p-8 text-white shadow-xl h-full">
+              <div className="flex flex-col justify-between h-full">
+                <div>
+                  <div className="flex items-center space-x-3 mb-3">
+                    <Target className="w-10 h-10" />
+                    <Zap className="w-8 h-8" />
+                  </div>
+                  <h2 className="text-3xl font-bold mb-2">Bubble Selection</h2>
+                  <p className="text-orange-100 mb-4">
+                    Test your mental math speed and accuracy. Calculate expressions quickly and select bubbles in ascending order. 24 questions with adaptive difficulty across 14 sections!
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <div className="flex items-center space-x-2 bg-white/20 rounded-lg px-3 py-1">
+                      <Zap className="w-4 h-4" />
+                      <span className="text-sm">Mental Math Speed</span>
+                    </div>
+                    <div className="flex items-center space-x-2 bg-white/20 rounded-lg px-3 py-1">
+                      <Target className="w-4 h-4" />
+                      <span className="text-sm">24 Questions</span>
+                    </div>
+                    <div className="flex items-center space-x-2 bg-white/20 rounded-lg px-3 py-1">
+                      <Trophy className="w-4 h-4" />
+                      <span className="text-sm">Adaptive Difficulty</span>
+                    </div>
+                  </div>
                 </div>
-                <h2 className="text-3xl font-bold mb-2">Accenture Key Finder</h2>
-                <p className="text-blue-100 mb-4 max-w-xl">
-                  Test your spatial memory and navigation skills in this cognitive assessment game. Navigate through an invisible maze to find the key and reach the exit using only your memory.
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  <div className="flex items-center space-x-2 bg-white/20 rounded-lg px-3 py-1">
-                    <Brain className="w-4 h-4" />
-                    <span className="text-sm">Memory Challenge</span>
-                  </div>
-                  <div className="flex items-center space-x-2 bg-white/20 rounded-lg px-3 py-1">
-                    <Target className="w-4 h-4" />
-                    <span className="text-sm">3 Difficulty Levels</span>
-                  </div>
-                  <div className="flex items-center space-x-2 bg-white/20 rounded-lg px-3 py-1">
-                    <Trophy className="w-4 h-4" />
-                    <span className="text-sm">Leaderboards</span>
-                  </div>
-                </div>
+                <button
+                  onClick={() => {
+                    if (!isAuthenticated) {
+                      onShowAuth();
+                    } else {
+                      navigate('/bubble-selection');
+                    }
+                  }}
+                  className="mt-6 w-full px-8 py-4 bg-white text-orange-600 rounded-xl font-bold hover:bg-orange-50 transition-colors shadow-lg hover:shadow-xl transform hover:scale-105"
+                >
+                  {isAuthenticated ? 'Play Bubble Selection' : 'Login to Play'}
+                </button>
               </div>
-              <button
-                onClick={() => navigate('/key-finder')}
-                className="px-8 py-4 bg-white text-blue-600 rounded-xl font-bold hover:bg-blue-50 transition-colors shadow-lg hover:shadow-xl transform hover:scale-105"
-              >
-                Play Key Finder
-              </button>
             </div>
-          </div>
-        </motion.div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+          >
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-700 dark:to-purple-700 rounded-2xl p-8 text-white shadow-xl h-full">
+              <div className="flex flex-col justify-between h-full">
+                <div>
+                  <div className="flex items-center space-x-3 mb-3">
+                    <Brain className="w-10 h-10" />
+                    <Key className="w-8 h-8" />
+                  </div>
+                  <h2 className="text-3xl font-bold mb-2">Key Finder</h2>
+                  <p className="text-blue-100 mb-4">
+                    Test your spatial memory and navigation skills in this cognitive assessment game. Navigate through an invisible maze to find the key and reach the exit using only your memory.
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <div className="flex items-center space-x-2 bg-white/20 rounded-lg px-3 py-1">
+                      <Brain className="w-4 h-4" />
+                      <span className="text-sm">Memory Challenge</span>
+                    </div>
+                    <div className="flex items-center space-x-2 bg-white/20 rounded-lg px-3 py-1">
+                      <Target className="w-4 h-4" />
+                      <span className="text-sm">3 Difficulty Levels</span>
+                    </div>
+                    <div className="flex items-center space-x-2 bg-white/20 rounded-lg px-3 py-1">
+                      <Trophy className="w-4 h-4" />
+                      <span className="text-sm">Leaderboards</span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate('/key-finder')}
+                  className="mt-6 w-full px-8 py-4 bg-white text-blue-600 rounded-xl font-bold hover:bg-blue-50 transition-colors shadow-lg hover:shadow-xl transform hover:scale-105"
+                >
+                  Play Key Finder
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
 
         <div className="mb-12">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Company Path Finder Games</h2>
