@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, Target, TrendingUp, AlertCircle, Award, CheckCircle, XCircle } from 'lucide-react';
 import { bubbleSelectionService } from '../../services/bubbleSelectionService';
@@ -47,12 +47,15 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
   });
   const [showInstructions, setShowInstructions] = useState(true);
   
+  // Refs to avoid closure issues
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const isProcessingRef = useRef<boolean>(false);
   const sessionRef = useRef<BubbleSelectionSession | null>(null);
   const currentQuestionIdRef = useRef<string | null>(null);
+  const gameStateRef = useRef<GameState>(gameState);
+  const questionStartTimeRef = useRef<number>(0);
 
-  // Keep refs in sync
+  // Keep refs in sync with state
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
@@ -61,28 +64,43 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
     currentQuestionIdRef.current = currentQuestionId;
   }, [currentQuestionId]);
 
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
+  useEffect(() => {
+    questionStartTimeRef.current = questionStartTime;
+  }, [questionStartTime]);
+
   // Timer effect
   useEffect(() => {
+    // Clear any existing timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
-    if (gameState.status === 'playing' && gameState.timeRemaining > 0 && !gameState.isValidating) {
+    if (gameState.status === 'playing' && !gameState.isValidating) {
       timerRef.current = setInterval(() => {
         setGameState(prev => {
+          // Double check we should still be counting
           if (prev.isValidating || prev.status !== 'playing') {
             return prev;
           }
           
-          if (prev.timeRemaining <= 1) {
+          const newTime = prev.timeRemaining - 1;
+          
+          // When timer hits zero, trigger timeout
+          if (newTime <= 0) {
             if (!isProcessingRef.current) {
               isProcessingRef.current = true;
-              setTimeout(() => handleTimeout(), 0);
+              // Use setTimeout to avoid blocking the state update
+              setTimeout(() => handleTimeout(), 50);
             }
-            return { ...prev, timeRemaining: 0 };
+            return { ...prev, timeRemaining: 0, isValidating: true };
           }
-          return { ...prev, timeRemaining: prev.timeRemaining - 1 };
+          
+          return { ...prev, timeRemaining: newTime };
         });
       }, 1000);
     }
@@ -109,11 +127,13 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
 
   const loadNextQuestion = async (sessionId: string, questionNumber: number) => {
     try {
+      // Clear timer
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
 
+      // Reset processing flag
       isProcessingRef.current = false;
       setFeedback({ show: false, isCorrect: false, message: '' });
 
@@ -125,7 +145,10 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
 
       setCurrentQuestionId(questionData.id);
       currentQuestionIdRef.current = questionData.id;
-      setQuestionStartTime(Date.now());
+      
+      const startTime = Date.now();
+      setQuestionStartTime(startTime);
+      questionStartTimeRef.current = startTime;
 
       const bubbles: BubbleData[] = questionData.expressions.map((expr, index) => ({
         id: expr.id,
@@ -160,12 +183,14 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
       }));
     } catch (error) {
       console.error('Error loading question:', error);
+      isProcessingRef.current = false;
     }
   };
 
   const handleBubbleClick = (bubbleIndex: number) => {
     if (gameState.status !== 'playing' || gameState.isValidating) return;
     if (gameState.selectedBubbles.includes(bubbleIndex)) return;
+    if (gameState.timeRemaining <= 0) return;
 
     const newSelectedBubbles = [...gameState.selectedBubbles, bubbleIndex];
 
@@ -190,7 +215,7 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
 
     // Check if all bubbles selected
     if (gameState.currentQuestion && newSelectedBubbles.length === gameState.currentQuestion.bubbles.length) {
-      validateAnswer(newSelectedBubbles);
+      setTimeout(() => validateAnswer(newSelectedBubbles), 100);
     }
   };
 
@@ -199,7 +224,7 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
     const currentSession = sessionRef.current;
     
     if (!questionId || !currentSession || isProcessingRef.current) {
-      console.log('Validation blocked:', { questionId, currentSession, isProcessing: isProcessingRef.current });
+      console.log('Validation blocked:', { questionId, hasSession: !!currentSession, isProcessing: isProcessingRef.current });
       return;
     }
     
@@ -210,12 +235,13 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
       isValidating: true
     }));
 
+    // Clear timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
-    const timeTaken = (Date.now() - questionStartTime) / 1000;
+    const timeTaken = (Date.now() - questionStartTimeRef.current) / 1000;
 
     try {
       const { isCorrect, scoreEarned } = await bubbleSelectionService.submitAnswer(
@@ -224,8 +250,11 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
         timeTaken
       );
 
-      const currentQuestion = gameState.currentQuestion;
-      if (!currentQuestion) return;
+      const currentQuestion = gameStateRef.current.currentQuestion;
+      if (!currentQuestion) {
+        isProcessingRef.current = false;
+        return;
+      }
 
       const sortedExpressions = [...currentQuestion.bubbles]
         .sort((a, b) => a.expression.result - b.expression.result);
@@ -248,7 +277,7 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
       setTimeout(() => {
         setFeedback({ show: false, isCorrect: false, message: '' });
         proceedToNextQuestion();
-      }, 2000);
+      }, 2500);
     } catch (error) {
       console.error('Error validating answer:', error);
       setGameState(prev => ({ ...prev, isValidating: false }));
@@ -258,31 +287,42 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
 
   const handleTimeout = async () => {
     const questionId = currentQuestionIdRef.current;
+    const currentSession = sessionRef.current;
+    const currentGameState = gameStateRef.current;
     
-    if (!questionId || isProcessingRef.current) {
-      console.log('Timeout blocked:', { questionId, isProcessing: isProcessingRef.current });
+    if (!questionId || !currentSession || isProcessingRef.current) {
+      console.log('Timeout blocked:', { questionId, hasSession: !!currentSession, isProcessing: isProcessingRef.current });
+      isProcessingRef.current = false;
       return;
     }
 
-    isProcessingRef.current = true;
+    console.log('Processing timeout for question:', questionId);
 
-    setGameState(prev => ({ 
-      ...prev, 
-      isValidating: true
-    }));
-
+    // Clear timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
     try {
-      const timeLimit = gameState.currentQuestion?.timeLimit || 14;
+      const timeLimit = currentGameState.currentQuestion?.timeLimit || 14;
+      
+      // Submit as incorrect with empty or partial sequence
       await bubbleSelectionService.submitAnswer(
         questionId,
-        gameState.selectedBubbles,
+        currentGameState.selectedBubbles,
         timeLimit
       );
+
+      // Get correct answer to show
+      const currentQuestion = currentGameState.currentQuestion;
+      let correctAnswerMessage = "Time's up! Question missed.";
+      
+      if (currentQuestion) {
+        const sortedExpressions = [...currentQuestion.bubbles]
+          .sort((a, b) => a.expression.result - b.expression.result);
+        correctAnswerMessage = `Time's up! Correct order: ${sortedExpressions.map(b => b.expression.result).join(' < ')}`;
+      }
 
       setGameState(prev => ({
         ...prev,
@@ -292,13 +332,13 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
       setFeedback({
         show: true,
         isCorrect: false,
-        message: 'Time\'s up!'
+        message: correctAnswerMessage
       });
 
       setTimeout(() => {
         setFeedback({ show: false, isCorrect: false, message: '' });
         proceedToNextQuestion();
-      }, 1500);
+      }, 2500);
     } catch (error) {
       console.error('Error handling timeout:', error);
       isProcessingRef.current = false;
@@ -308,11 +348,14 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
 
   const proceedToNextQuestion = () => {
     const currentSession = sessionRef.current;
-    if (!currentSession) return;
+    if (!currentSession) {
+      console.log('No session found in proceedToNextQuestion');
+      return;
+    }
 
-    const nextQuestionNumber = gameState.questionNumber + 1;
+    const nextQuestionNumber = gameStateRef.current.questionNumber + 1;
 
-    if (nextQuestionNumber > gameState.totalQuestions) {
+    if (nextQuestionNumber > gameStateRef.current.totalQuestions) {
       completeGame();
     } else {
       setTimeout(() => {
@@ -341,7 +384,7 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
 
   const getTimerColor = () => {
     if (gameState.timeRemaining <= 3) return 'text-red-600';
-    if (gameState.timeRemaining <= 5) return 'text-orange-500';
+    if (gameState.timeRemaining <= 7) return 'text-orange-500';
     return 'text-blue-600';
   };
 
@@ -381,30 +424,30 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
                 How to Play
               </h3>
               <ol className="list-decimal list-inside space-y-2 text-gray-700 dark:text-gray-300">
-                <li>You'll see 3-5 mathematical expressions in bubbles</li>
+                <li>You'll see 3 mathematical expressions in bubbles</li>
                 <li>Calculate each expression mentally</li>
                 <li>Click the bubbles in order from LOWEST to HIGHEST value</li>
                 <li>Complete each question within 14 seconds</li>
-                <li>Answer 24 questions across progressive sections</li>
+                <li>Answer 24 questions with increasing difficulty</li>
               </ol>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4">
                 <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Questions 1-8</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Simple integer arithmetic</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Addition & Subtraction</p>
               </div>
               <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-4">
                 <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Questions 9-16</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Mixed operations with decimals</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Multiplication & Division</p>
               </div>
               <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-4">
                 <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Questions 17-24</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Complex decimal calculations</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Complex operations & Square roots</p>
               </div>
               <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-4">
-                <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Adaptive</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Difficulty adjusts to performance</p>
+                <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Challenge</h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Always 3 bubbles, 14 seconds</p>
               </div>
             </div>
           </div>
@@ -503,7 +546,7 @@ export const BubbleSelectionGame: React.FC<BubbleSelectionGameProps> = ({
                   whileHover={{ scale: bubble.isSelected ? 1 : 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => handleBubbleClick(bubble.index)}
-                  disabled={bubble.isSelected || gameState.isValidating}
+                  disabled={bubble.isSelected || gameState.isValidating || gameState.timeRemaining <= 0}
                   className={`relative w-32 h-32 rounded-full flex items-center justify-center text-2xl font-bold transition-all shadow-lg ${
                     bubble.isSelected
                       ? 'bg-gradient-to-br from-blue-400 to-purple-500 text-white cursor-not-allowed'
