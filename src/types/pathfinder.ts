@@ -1,6 +1,7 @@
-export type ArrowDirection = 'up' | 'down' | 'left' | 'right';
+import type { ArrowDirection } from '../helpers/direction';
 
 export type TilePatternType = 'straight' | 'corner' | 't_junction' | 'cross' | 'end';
+export type TileRotation = 0 | 90 | 180 | 270;
 
 export interface ConnectionPoints {
   left: boolean;
@@ -13,15 +14,12 @@ export interface TilePattern {
   id: string;
   pattern_name: string;
   pattern_type: TilePatternType;
-  arrow_directions: ArrowDirection[];
-  connection_points: ConnectionPoints;
-  svg_path?: string;
+  arrow_directions: ArrowDirection[]; // canonical at rotation 0
+  connection_points: ConnectionPoints; // (optional backup; can mirror arrow_directions)
   difficulty_level: number;
   is_active: boolean;
   created_at: string;
 }
-
-export type TileRotation = 0 | 90 | 180 | 270;
 
 export interface GridTile {
   row: number;
@@ -89,16 +87,6 @@ export interface PathFinderLeaderboardEntry {
   user_email?: string;
 }
 
-export interface XPAward {
-  id: string;
-  user_id: string;
-  session_id: string;
-  xp_earned: number;
-  score_multiplier: number;
-  bonus_reason?: string;
-  awarded_at: string;
-}
-
 export interface GameState {
   status: 'idle' | 'ready' | 'playing' | 'paused' | 'completed' | 'failed';
   selectedTile: { row: number; col: number } | null;
@@ -122,4 +110,12 @@ export interface ScoreCalculation {
   movePenalty: number;
   finalScore: number;
   efficiency: number;
+}
+
+// Game level (your existing type)
+export interface GameLevel {
+  id: string;
+  level_number: number;
+  grid_size: number;
+  target_score: number;
 }
