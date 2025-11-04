@@ -1,4 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import { EmailService, logEmailSend } from '../_shared/emailService.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,6 +24,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     const emailData: WelcomeEmailRequest = await req.json();
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const emailHtml = `
 <!DOCTYPE html>
@@ -250,19 +256,53 @@ Deno.serve(async (req: Request) => {
 </html>
     `;
 
-    console.log('Welcome email would be sent to:', emailData.recipientEmail);
+    console.log('Sending welcome email to:', emailData.recipientEmail);
     console.log('User ID:', emailData.userId);
     console.log('Recipient Name:', emailData.recipientName);
 
-    // TODO: Integrate with actual email service (SMTP or API like Resend, SendGrid, etc.)
-    // For now, logging the email that would be sent
-    
+    const emailService = new EmailService();
+    const subject = 'Welcome to PrimoBoost AI!';
+
+    const result = await emailService.sendEmail({
+      to: emailData.recipientEmail,
+      subject: subject,
+      html: emailHtml,
+    });
+
+    await logEmailSend(
+      supabase,
+      emailData.userId,
+      'welcome',
+      emailData.recipientEmail,
+      subject,
+      result.success ? 'sent' : 'failed',
+      result.error
+    );
+
+    if (!result.success) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: result.error,
+          message: 'Failed to send welcome email'
+        }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         message: 'Welcome email sent successfully',
         recipient: emailData.recipientEmail,
-        userId: emailData.userId
+        userId: emailData.userId,
+        messageId: result.messageId
       }),
       {
         status: 200,

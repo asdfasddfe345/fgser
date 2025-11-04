@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { EmailService, logEmailSend } from '../_shared/emailService.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -312,44 +313,74 @@ Deno.serve(async (req: Request) => {
 </html>
     `;
 
-    console.log(`Job digest email would be sent to: ${emailData.recipientEmail}`);
+    console.log(`Sending job digest email to: ${emailData.recipientEmail}`);
     console.log(`Number of jobs: ${jobCount}`);
     console.log(`User ID: ${emailData.userId}`);
 
-    // Log each job notification
-    for (const job of emailData.jobs) {
-      await supabase.rpc('log_notification_send', {
-        p_user_id: emailData.userId,
-        p_job_id: job.job_id,
-        p_email_status: 'sent',
-        p_notification_type: 'daily_digest'
-      });
-    }
+    const emailService = new EmailService();
+    const subject = `🔔 ${jobCount} New ${jobCount === 1 ? 'Job' : 'Jobs'} Matching Your Preferences`;
 
-    // Update last sent timestamp
-    await supabase.rpc('update_subscription_last_sent', {
-      p_user_id: emailData.userId
+    const result = await emailService.sendEmail({
+      to: emailData.recipientEmail,
+      subject: subject,
+      html: emailHtml,
     });
+
+    const emailStatus = result.success ? 'sent' : 'failed';
 
     // Log email send
-    await supabase.from('email_logs').insert({
-      user_id: emailData.userId,
-      email_type: 'job_digest',
-      recipient_email: emailData.recipientEmail,
-      subject: `🔔 ${jobCount} New ${jobCount === 1 ? 'Job' : 'Jobs'} Matching Your Preferences`,
-      status: 'sent'
-    });
+    await logEmailSend(
+      supabase,
+      emailData.userId,
+      'job_digest',
+      emailData.recipientEmail,
+      subject,
+      emailStatus,
+      result.error
+    );
 
-    // TODO: Integrate with actual email service (SMTP or API like Resend, SendGrid, etc.)
-    // For now, logging the email that would be sent
-    
+    if (result.success) {
+      // Log each job notification
+      for (const job of emailData.jobs) {
+        await supabase.rpc('log_notification_send', {
+          p_user_id: emailData.userId,
+          p_job_id: job.job_id,
+          p_email_status: emailStatus,
+          p_notification_type: 'daily_digest'
+        }).catch(err => console.error('Error logging notification:', err));
+      }
+
+      // Update last sent timestamp
+      await supabase.rpc('update_subscription_last_sent', {
+        p_user_id: emailData.userId
+      }).catch(err => console.error('Error updating last sent:', err));
+    }
+
+    if (!result.success) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: result.error,
+          message: 'Failed to send job digest email'
+        }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         message: 'Job digest email sent successfully',
         recipient: emailData.recipientEmail,
         jobCount: jobCount,
-        userId: emailData.userId
+        userId: emailData.userId,
+        messageId: result.messageId
       }),
       {
         status: 200,

@@ -1,4 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import { EmailService, logEmailSend } from '../_shared/emailService.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,6 +29,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     const emailData: EmailRequest = await req.json();
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const emailHtml = `
 <!DOCTYPE html>
@@ -227,15 +233,52 @@ Deno.serve(async (req: Request) => {
 </html>
     `;
 
-    console.log('Email would be sent to:', emailData.recipientEmail);
+    console.log('Sending webinar confirmation email to:', emailData.recipientEmail);
     console.log('Webinar:', emailData.webinarTitle);
     console.log('Meet Link:', emailData.meetLink);
+
+    const emailService = new EmailService();
+    const subject = `Webinar Confirmed: ${emailData.webinarTitle}`;
+
+    const result = await emailService.sendEmail({
+      to: emailData.recipientEmail,
+      subject: subject,
+      html: emailHtml,
+    });
+
+    await logEmailSend(
+      supabase,
+      emailData.registrationId,
+      'webinar_confirmation',
+      emailData.recipientEmail,
+      subject,
+      result.success ? 'sent' : 'failed',
+      result.error
+    );
+
+    if (!result.success) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: result.error,
+          message: 'Failed to send webinar confirmation email'
+        }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
         message: 'Confirmation email sent successfully',
-        recipient: emailData.recipientEmail
+        recipient: emailData.recipientEmail,
+        messageId: result.messageId
       }),
       {
         status: 200,
