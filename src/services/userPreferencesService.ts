@@ -184,6 +184,134 @@ class UserPreferencesService {
       return false;
     }
   }
+
+  /**
+   * Get notification subscription status
+   */
+  async getNotificationSubscription(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('job_notification_subscriptions')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error fetching notification subscription:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Enable or update notification subscription
+   */
+  async updateNotificationSubscription(
+    userId: string,
+    preferredDomains: string[],
+    isSubscribed: boolean = true,
+    notificationFrequency: 'daily' | 'immediate' | 'weekly' = 'daily'
+  ): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('job_notification_subscriptions')
+        .upsert(
+          {
+            user_id: userId,
+            is_subscribed: isSubscribed,
+            preferred_domains: preferredDomains,
+            notification_frequency: notificationFrequency,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'user_id',
+          }
+        );
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error updating notification subscription:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Unsubscribe from job notifications
+   */
+  async unsubscribeFromNotifications(userId: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('job_notification_subscriptions')
+        .update({
+          is_subscribed: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error unsubscribing from notifications:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get notification statistics for user
+   */
+  async getNotificationStats(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('job_notification_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      const { count } = data as any;
+
+      const { data: lastNotification } = await supabase
+        .from('job_notification_logs')
+        .select('sent_at')
+        .eq('user_id', userId)
+        .order('sent_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      return {
+        totalNotifications: count || 0,
+        lastNotificationDate: lastNotification?.sent_at || null,
+      };
+    } catch (error) {
+      console.error('Error fetching notification stats:', error);
+      return {
+        totalNotifications: 0,
+        lastNotificationDate: null,
+      };
+    }
+  }
+
+  /**
+   * Get available job domains for notification preferences
+   */
+  async getAvailableDomains(): Promise<string[]> {
+    try {
+      const { data, error } = await supabase
+        .from('job_listings')
+        .select('domain')
+        .eq('is_active', true);
+
+      if (error) throw error;
+
+      const uniqueDomains = [...new Set(data?.map(job => job.domain) || [])];
+      return uniqueDomains.filter(Boolean).sort();
+    } catch (error) {
+      console.error('Error fetching available domains:', error);
+      return [];
+    }
+  }
 }
 
 export const userPreferencesService = new UserPreferencesService();
